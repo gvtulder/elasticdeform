@@ -331,7 +331,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     for(jj = 0; jj < irank; jj++)
         dsplvals[jj] = NULL;
     for(jj = 0; jj < irank; jj++) {
-        dsplvals[jj] = malloc((order + 1) * sizeof(double));
+        dsplvals[jj] = malloc((irank + order + 1) * sizeof(double));
         if (NPY_UNLIKELY(!dsplvals[jj])) {
             NPY_END_THREADS;
             PyErr_NoMemory();
@@ -349,7 +349,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     for(jj = 0; jj < irank; jj++)
         splvals[jj] = NULL;
     for(jj = 0; jj < irank; jj++) {
-        splvals[jj] = malloc((order + 1) * sizeof(double));
+        splvals[jj] = malloc((irank + order + 1) * sizeof(double));
         if (NPY_UNLIKELY(!splvals[jj])) {
             NPY_END_THREADS;
             PyErr_NoMemory();

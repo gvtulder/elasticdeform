@@ -442,55 +442,55 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
             cpoint[hh] = (double)(ncontrolpoints - 1) * (double)(io.coordinates[hh]) / (double)(odimensions[hh] - 1);
             get_spline_interpolation_weights(cpoint[hh], dorder, dsplvals[hh]);
         }
+        /* compute deplacement on this dimension */
+        double dd = 0.0;
+        int dedge = 0;
+        npy_intp ddoffset = 0;
+        for(jj = 0; jj < irank; jj++) {
+            /* assumption: by definition, cp is inside the deplacement array */
+            double cp = cpoint[jj];
+//              printf("cp=%f\n", cp);
+            /* find the filter location along this axis: */
+            npy_intp start;
+            if (dorder & 1) {
+                start = (npy_intp)floor(cp) - dorder / 2;
+            } else {
+                start = (npy_intp)floor(cp + 0.5) - dorder / 2;
+            }
+            /* get the offset to the start of the filter: */
+            ddoffset += dstrides[jj + 1] * start;
+            if (start < 0 || start + dorder >= ddimensions[jj]) {
+                /* implement border mapping, if outside border: */
+                dedge = 1;
+                dedge_offsets[jj] = ddata_offsets[jj];
+                for(ll = 0; ll <= dorder; ll++) {
+                    npy_intp idx = start + ll;
+                    npy_intp len = ddimensions[jj + 1];
+                    if (len <= 1) {
+                        idx = 0;
+                    } else {
+                        npy_intp s2 = 2 * len - 2;
+                        if (idx < 0) {
+                            idx = s2 * (int)(-idx / s2) + idx;
+                            idx = idx <= 1 - len ? idx + s2 : -idx;
+                        } else if (idx >= len) {
+                            idx -= s2 * (int)(idx / s2);
+                            if (idx >= len)
+                                idx = s2 - idx;
+                        }
+                    }
+                    /* calculate and store the offests at this edge: */
+                    dedge_offsets[jj][ll] = dstrides[jj + 1] * (idx - start);
+                }
+            } else {
+                /* we are not at the border, use precalculated offsets: */
+                dedge_offsets[jj] = NULL;
+            }
+        }
+
         /* iterate over axes: */
         for(hh = 0; hh < irank; hh++) {
 //          printf("hh=%d\n", hh);
-            /* compute deplacement on this dimension */
-            double dd = 0.0;
-            int dedge = 0;
-            npy_intp ddoffset = 0;
-            for(jj = 0; jj < irank; jj++) {
-                /* assumption: by definition, cp is inside the deplacement array */
-                double cp = cpoint[jj];
-//              printf("cp=%f\n", cp);
-                /* find the filter location along this axis: */
-                npy_intp start;
-                if (dorder & 1) {
-                    start = (npy_intp)floor(cp) - dorder / 2;
-                } else {
-                    start = (npy_intp)floor(cp + 0.5) - dorder / 2;
-                }
-                /* get the offset to the start of the filter: */
-                ddoffset += dstrides[jj + 1] * start;
-                if (start < 0 || start + dorder >= ddimensions[jj]) {
-                    /* implement border mapping, if outside border: */
-                    dedge = 1;
-                    dedge_offsets[jj] = ddata_offsets[jj];
-                    for(ll = 0; ll <= dorder; ll++) {
-                        npy_intp idx = start + ll;
-                        npy_intp len = ddimensions[jj + 1];
-                        if (len <= 1) {
-                            idx = 0;
-                        } else {
-                            npy_intp s2 = 2 * len - 2;
-                            if (idx < 0) {
-                                idx = s2 * (int)(-idx / s2) + idx;
-                                idx = idx <= 1 - len ? idx + s2 : -idx;
-                            } else if (idx >= len) {
-                                idx -= s2 * (int)(idx / s2);
-                                if (idx >= len)
-                                    idx = s2 - idx;
-                            }
-                        }
-                        /* calculate and store the offests at this edge: */
-                        dedge_offsets[jj][ll] = dstrides[jj + 1] * (idx - start);
-                    }
-                } else {
-                    /* we are not at the border, use precalculated offsets: */
-                    dedge_offsets[jj] = NULL;
-                }
-            }
-
             /* compute displacement */
             npy_intp *dff = dfcoordinates;
             const int type_num = PyArray_TYPE(displacement);

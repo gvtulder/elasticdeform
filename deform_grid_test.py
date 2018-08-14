@@ -85,13 +85,13 @@ class TestDeformGrid(unittest.TestCase):
     def test_basic_2d(self):
         for points in ((3, 3), (3, 5), (1, 5)):
             for shape in ((100, 100), (100, 75)):
-                for order in (1, 2, 3, 4):
+                for order in (0, 1, 2, 3, 4):
                     self.run_comparison(shape, points, order=order)
 
     def test_basic_3d(self):
         for points in ((3, 3, 3), (3, 5, 7), (1, 3, 5)):
             for shape in ((50, 50, 50), (100, 50, 25)):
-                for order in (1, 2, 3, 4):
+                for order in (0, 1, 2, 3, 4):
                     self.run_comparison(shape, points, order=order)
 
     def test_crop_2d(self):
@@ -100,7 +100,7 @@ class TestDeformGrid(unittest.TestCase):
         for crop in ((slice(0, 50), slice(0, 50)),
                      (slice(20, 60), slice(20, 60)),
                      (slice(50, 100), slice(50, 100))):
-            for order in (1, 2, 3, 4):
+            for order in (0, 1, 2, 3, 4):
                 self.run_comparison(shape, points, crop=crop, order=order)
 
     def test_crop_3d(self):
@@ -114,7 +114,7 @@ class TestDeformGrid(unittest.TestCase):
         points = (3, 3)
         shape = (100, 75)
         sigma = 25
-        for order in (1, 2, 3, 4):
+        for order in (0, 1, 2, 3, 4):
             for crop in (None, (slice(15, 25), slice(15, 50))):
                 # generate random displacement vector
                 displacement = np.random.randn(len(shape), *points) * sigma
@@ -135,7 +135,7 @@ class TestDeformGrid(unittest.TestCase):
         points = (3, 3, 3)
         shape = (25, 25, 30)
         sigma = 25
-        for order in (1, 2, 3, 4):
+        for order in (0, 1, 2, 3, 4):
             for crop in (None, (slice(15, 20), slice(15, 25), slice(2, 10))):
                 # generate random displacement vector
                 displacement = np.random.randn(len(shape), *points) * sigma

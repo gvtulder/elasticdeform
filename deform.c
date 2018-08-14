@@ -470,7 +470,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
             }
             /* get the offset to the start of the filter: */
             ddoffset += dstrides[jj + 1] * start;
-            if (start < 0 || start + dorder >= ddimensions[jj]) {
+            if (start < 0 || start + dorder >= ddimensions[jj + 1]) {
                 /* implement border mapping, if outside border: */
                 dedge = 1;
                 dedge_offsets[jj] = ddata_offsets[jj];

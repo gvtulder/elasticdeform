@@ -15,6 +15,18 @@ NI_ObjectToInputArray(PyObject *object, PyArrayObject **array)
               return *array != NULL;
 }
 
+/* Like NI_ObjectToInputArray, but with special handling for Py_None. */
+static int
+NI_ObjectToOptionalInputArray(PyObject *object, PyArrayObject **array)
+{
+      if (object == Py_None) {
+                *array = NULL;
+                        return 1;
+                            }
+          return NI_ObjectToInputArray(object, array);
+}
+
+
 /* Converts a Python array-like object into a behaved output array. */
 static int
 NI_ObjectToOutputArray(PyObject *object, PyArrayObject **array)
@@ -49,18 +61,19 @@ NI_ObjectToOutputArray(PyObject *object, PyArrayObject **array)
 static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
 {
     PyArrayObject *input = NULL, *output = NULL;
-    PyArrayObject *displacement = NULL;
+    PyArrayObject *displacement = NULL, *output_offset = NULL;
     int mode, order;
     double cval;
 
-    if (!PyArg_ParseTuple(args, "O&O&O&iid",
+    if (!PyArg_ParseTuple(args, "O&O&O&O&iid",
                           NI_ObjectToInputArray, &input,
                           NI_ObjectToInputArray, &displacement,
+                          NI_ObjectToOptionalInputArray, &output_offset,
                           NI_ObjectToOutputArray, &output,
                           &order, &mode, &cval))
         goto exit;
 
-    DeformGrid(input, displacement, output, order, (NI_ExtendMode)mode, cval);
+    DeformGrid(input, displacement, output_offset, output, order, (NI_ExtendMode)mode, cval);
     #ifdef HAVE_WRITEBACKIFCOPY
         PyArray_ResolveWritebackIfCopy(output);
     #endif
@@ -69,6 +82,7 @@ exit:
     Py_XDECREF(input);
     Py_XDECREF(output);
     Py_XDECREF(displacement);
+    Py_XDECREF(output_offset);
     return PyErr_Occurred() ? NULL : Py_BuildValue("");
 }
 

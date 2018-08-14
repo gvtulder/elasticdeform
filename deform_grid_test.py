@@ -28,6 +28,29 @@ def deform_grid_py(X, displacement, order=3, crop=None):
 
 # C implementation wrapper
 def deform_grid_c(X, displacement, order=3, crop=None):
+    if crop is not None:
+        output_shape = [X.shape[d] for d in range(X.ndim)]
+        output_offset = [0 for d in range(X.ndim)]
+        for d in range(X.ndim):
+            if isinstance(crop[d], slice):
+                assert crop[d].step is None
+                start = (crop[d].start or 0)
+                stop = (crop[d].stop or X.shape[d])
+                assert start >= 0
+                assert start < stop and stop <= X.shape[d]
+                output_shape[d] = stop - start
+                if start > 0:
+                    output_offset[d] = start
+            elif crop[d] is not None:
+                raise Exception("Crop must be a slice or None.")
+        if any(o > 0 for o in output_offset):
+            output_offset = np.array(output_offset)
+        else:
+            output_offset = None
+    else:
+        output_shape = X.shape
+        output_offset = None
+
     if order > 1:
         X_sf = scipy.ndimage.spline_filter(X, order=order)
     else:
@@ -35,10 +58,12 @@ def deform_grid_c(X, displacement, order=3, crop=None):
     displacement_sf = displacement
     for d in range(1, displacement.ndim):
         displacement_sf = scipy.ndimage.spline_filter1d(displacement_sf, axis=d, order=3)
+
     mode = 4  # NI_EXTEND_CONSTANT
     cval = 0.0
-    output = np.zeros_like(X)
-    _deform_grid.deform_grid(X_sf, displacement_sf, output, order, mode, cval)
+
+    output = np.zeros(output_shape, dtype=X.dtype)
+    _deform_grid.deform_grid(X_sf, displacement_sf, output_offset, output, order, mode, cval)
     return output
 
 
@@ -55,15 +80,24 @@ class TestDeformGrid(unittest.TestCase):
                 for order in (1, 2, 3, 4):
                     self.run_comparison(shape, points, order=order)
 
-    def run_comparison(self, shape, points, order=3, sigma=25):
+    def test_crop_2d(self):
+        points = (3, 3)
+        shape = (100, 100)
+        for crop in ((slice(0, 50), slice(0, 50)),
+                     (slice(20, 60), slice(20, 60)),
+                     (slice(50, 100), slice(50, 100))):
+            for order in (1, 2, 3, 4):
+                self.run_comparison(shape, points, crop=crop, order=order)
+
+    def run_comparison(self, shape, points, order=3, sigma=25, crop=None):
         # generate random displacement vector
         displacement = np.random.randn(len(shape), *points) * sigma
         # generate random data
         X = np.random.rand(*shape)
 
         # test and compare
-        res_ref = deform_grid_py(X, displacement, order=order)
-        res_test = deform_grid_c(X, displacement, order=order)
+        res_ref = deform_grid_py(X, displacement, order=order, crop=crop)
+        res_test = deform_grid_c(X, displacement, order=order, crop=crop)
 
         np.testing.assert_array_almost_equal(res_ref, res_test)
 

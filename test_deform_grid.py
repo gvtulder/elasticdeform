@@ -2,8 +2,7 @@ import numpy as np
 import scipy.ndimage
 import unittest
 
-import deform_grid
-import _deform_grid
+import deform as deform_grid
 
 # Python implementation
 def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None):

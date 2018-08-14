@@ -1,7 +1,7 @@
 import numpy
 import scipy.ndimage
 
-import _deform_grid
+from . import _deform_grid
 
 def deform_random_grid(X, sigma=25, points=3, **kwargs):
     """

@@ -60,37 +60,56 @@ NI_ObjectToOutputArray(PyObject *object, PyArrayObject **array)
 
 static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
 {
-    PyArrayObject *tmpInput = NULL, *tmpOutput = NULL;
-    PyArrayObject **input = NULL, **output = NULL;
+    PyObject *inputList = NULL, *outputList = NULL;
+    PyArrayObject **inputs = NULL, **outputs = NULL;
     PyArrayObject *displacement = NULL, *output_offset = NULL;
-    int mode, order;
+    int mode, order, i;
     double cval;
+    Py_ssize_t ninputs = 0;
 
-    if (!PyArg_ParseTuple(args, "O&O&O&O&iid",
-                          NI_ObjectToInputArray, &tmpInput,
+    if (!PyArg_ParseTuple(args, "O!O&O&O!iid",
+                          &PyList_Type, &inputList,
                           NI_ObjectToInputArray, &displacement,
                           NI_ObjectToOptionalInputArray, &output_offset,
-                          NI_ObjectToOutputArray, &tmpOutput,
+                          &PyList_Type, &outputList,
                           &order, &mode, &cval))
         goto exit;
-    input = malloc(1 * sizeof(PyArrayObject*));
-    output = malloc(1 * sizeof(PyArrayObject*));
-    input[0] = tmpInput;
-    output[0] = tmpOutput;
+
+    ninputs = PyList_Size(inputList);
+    // TODO check size of outputlist
+    // TODO check malloc
+    // TODO check size of inputs, outputs
+    inputs = malloc(ninputs * sizeof(PyArrayObject*));
+    outputs = malloc(ninputs * sizeof(PyArrayObject*));
+    for(i = 0; i < ninputs; i++) {
+        if (!NI_ObjectToInputArray(PyList_GetItem(inputList, i), &inputs[i]))
+            goto exit;
+        Py_INCREF(inputs[i]);
+        if (!NI_ObjectToOutputArray(PyList_GetItem(outputList, i), &outputs[i]))
+            goto exit;
+        Py_INCREF(outputs[i]);
+    }
 
     // TODO
-    DeformGrid(1, input, displacement, output_offset, output, order, (NI_ExtendMode)mode, cval);
+    DeformGrid(ninputs, inputs, displacement, output_offset,
+               outputs, order, (NI_ExtendMode)mode, cval);
     #ifdef HAVE_WRITEBACKIFCOPY
-        PyArray_ResolveWritebackIfCopy(tmpOutput);
+        for(i = 0; i < ninputs; i++) {
+            PyArray_ResolveWritebackIfCopy(outputs[i]);
+        }
     #endif
 
 exit:
-    Py_XDECREF(tmpInput);
-    Py_XDECREF(tmpOutput);
     Py_XDECREF(displacement);
     Py_XDECREF(output_offset);
-    free(input);
-    free(output);
+    for(i = 0; i < ninputs; i++) {
+        if (inputs)
+            Py_XDECREF(inputs[i]);
+        if (outputs)
+            Py_XDECREF(outputs[i]);
+    }
+    free(inputs);
+    free(outputs);
     return PyErr_Occurred() ? NULL : Py_BuildValue("");
 }
 

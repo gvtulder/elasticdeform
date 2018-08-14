@@ -268,12 +268,9 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     for(kk = 0; kk < PyArray_NDIM(input); kk++) {
         idimensions[kk] = PyArray_DIM(input, kk);
         istrides[kk] = PyArray_STRIDE(input, kk);
-    }
-    irank = PyArray_NDIM(input);
-
-    for(kk = 0; kk < PyArray_NDIM(output); kk++) {
         odimensions[kk] = PyArray_DIM(output, kk);
     }
+    irank = PyArray_NDIM(input);
 
     for (kk = 0; kk < PyArray_NDIM(displacement); kk++) {
         ddimensions[kk] = PyArray_DIM(displacement, kk);

@@ -460,7 +460,6 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         int constant = 0, edge = 0;
         npy_intp offset = 0;
 
-//      printf("\n");
         /* compute deplacement on this dimension */
         double dd = 0.0;
         int dedge = 0;
@@ -508,7 +507,6 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
 
         /* iterate over axes: */
         for(hh = 0; hh < irank; hh++) {
-//          printf("hh=%d\n", hh);
             /* compute displacement */
             npy_intp *dff = dfcoordinates;
             const int type_num = PyArray_TYPE(displacement);
@@ -569,19 +567,10 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
                         coeff *= cur_dsplvals[io.coordinates[ll]][dff[ll]];
                     cur_dsplvals += odimensions[ll];
                 }
-//              printf("hh=%d  idx=%d  coeff=%f\n", hh, idx, coeff);
                 dd += coeff;
                 dff += irank;
             }
 
-//          printf("computing coordinates:  ");
-            /* compute control point coordinates */
-//          printf("control point:  ");
-//          for(jj = 0; jj < irank; jj++)
-//              printf(" %f", (double)(ncontrolpoints - 1) * (double)(io.coordinates[jj]) / (double)(odimensions[jj] - 1));
-//          printf("   ");
-//          printf("offset for [%d, %d]  dd[%d] = %f\n", io.coordinates[0], io.coordinates[1], hh, dd);
-            // t = (double)(ncontrolpoints - 1) * (double)(io.coordinates[0]) / (double)(odimensions[0] - 1);
 
             /* compute the coordinate: coordinate of output voxel io.coordinates[hh] + displacement dd */
             /* if the input coordinate is outside the borders, map it: */
@@ -693,9 +682,6 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         } else {
             t = cval;
         }
-//      printf("out[%d, %d]  t=%f\n", io.coordinates[0], io.coordinates[1], t);
-//      /* compute control point coordinates */
-//      t = (double)(ncontrolpoints - 1) * (double)(io.coordinates[0]) / (double)(odimensions[0] - 1);
         /* store output value: */
         switch (PyArray_TYPE(output)) {
             CASE_INTERP_OUT(NPY_BOOL, npy_bool, po, t);
@@ -721,36 +707,26 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
 
  exit:
     NPY_END_THREADS;
-//  printf("free at last!\n");
     free(edge_offsets);
     free(dedge_offsets);
-//  int log = 0;
-//  printf("irank = %d\n", irank);
-//  printf("free at last %d!\n", log++);
     if (data_offsets) {
         for(jj = 0; jj < irank; jj++)
             free(data_offsets[jj]);
         free(data_offsets);
     }
-//  printf("free at last %d!\n", log++);
     if (ddata_offsets) {
         for(jj = 0; jj < irank; jj++)
             free(ddata_offsets[jj]);
         free(ddata_offsets);
     }
-//  printf("dsplvals free at last %d!\n", log++);
     if (dsplvals) {
         for(jj = 0; jj < irank * perimeter; jj++)
             free(dsplvals[jj]);
         free(dsplvals);
     }
-//  printf("dsplvals free at last %d!\n", log++);
-//  printf("splvals free at last %d!\n", log++);
     if (splvals) {
-//      printf("splvals free at last %d!\n", log++);
         for(jj = 0; jj < irank; jj++)
             free(splvals[jj]);
-//      printf("splvals free at last %d!\n", log++);
         free(splvals);
     }
     free(foffsets);

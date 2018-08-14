@@ -321,16 +321,20 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         }
     }
 
+    npy_int perimeter = 0;
+    for(jj = 0; jj < irank; jj++) {
+        perimeter += odimensions[jj];
+    }
     /* will hold the deplacement spline coefficients: */
-    dsplvals = malloc(irank * sizeof(double*));
+    dsplvals = malloc(irank * perimeter * sizeof(double*));
     if (NPY_UNLIKELY(!dsplvals)) {
         NPY_END_THREADS;
         PyErr_NoMemory();
         goto exit;
     }
-    for(jj = 0; jj < irank; jj++)
+    for(jj = 0; jj < irank * perimeter; jj++)
         dsplvals[jj] = NULL;
-    for(jj = 0; jj < irank; jj++) {
+    for(jj = 0; jj < irank * perimeter; jj++) {
         dsplvals[jj] = malloc((dorder + 1) * sizeof(double));
         if (NPY_UNLIKELY(!dsplvals[jj])) {
             NPY_END_THREADS;
@@ -430,6 +434,16 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         }
     }
 
+    /* compute control point */
+    kk = 0;
+    for(hh = 0; hh < irank; hh++) {
+        for(jj = 0; jj < odimensions[hh]; jj++) {
+            double cp = (double)(ncontrolpoints - 1) * (double)(jj) / (double)(odimensions[hh] - 1);
+            get_spline_interpolation_weights(cp, dorder, dsplvals[kk]);
+            kk++;
+        }
+    }
+
     size = PyArray_SIZE(output);
     for(kk = 0; kk < size; kk++) {
         double t = 0.0;
@@ -437,18 +451,13 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         npy_intp offset = 0;
 
 //      printf("\n");
-        /* compute control point */
-        for(hh = 0; hh < irank; hh++) {
-            cpoint[hh] = (double)(ncontrolpoints - 1) * (double)(io.coordinates[hh]) / (double)(odimensions[hh] - 1);
-            get_spline_interpolation_weights(cpoint[hh], dorder, dsplvals[hh]);
-        }
         /* compute deplacement on this dimension */
         double dd = 0.0;
         int dedge = 0;
         npy_intp ddoffset = 0;
         for(jj = 0; jj < irank; jj++) {
             /* assumption: by definition, cp is inside the deplacement array */
-            double cp = cpoint[jj];
+            double cp = (double)(ncontrolpoints - 1) * (double)(io.coordinates[jj]) / (double)(odimensions[jj] - 1);
 //              printf("cp=%f\n", cp);
             /* find the filter location along this axis: */
             npy_intp start;
@@ -545,9 +554,12 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
                     goto exit;
                 }
                 /* calculate the interpolated value: */
-                for(ll = 0; ll < irank; ll++)
+                double **cur_dsplvals = dsplvals;
+                for(ll = 0; ll < irank; ll++) {
                     if (dorder > 0)
-                        coeff *= dsplvals[ll][dff[ll]];
+                        coeff *= cur_dsplvals[io.coordinates[ll]][dff[ll]];
+                    cur_dsplvals += odimensions[ll];
+                }
 //              printf("hh=%d  idx=%d  coeff=%f\n", hh, idx, coeff);
                 dd += coeff;
                 dff += irank;
@@ -719,7 +731,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     }
 //  printf("dsplvals free at last %d!\n", log++);
     if (dsplvals) {
-        for(jj = 0; jj < irank; jj++)
+        for(jj = 0; jj < irank * perimeter; jj++)
             free(dsplvals[jj]);
         free(dsplvals);
     }

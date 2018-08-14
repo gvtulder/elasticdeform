@@ -497,7 +497,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
             dd = 0.0;
             for(jj = 0; jj < dfilter_size; jj++) {
                 double coeff = 0.0;
-                npy_intp idx = dstrides[0] * hh;
+                npy_intp idx = 0;
 
                 if (NPY_UNLIKELY(dedge)) {
                     for(ll = 0; ll < irank; ll++) {
@@ -509,6 +509,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
                 } else {
                     idx = dfoffsets[jj];
                 }
+                idx += dstrides[0] * hh;
                 idx += ddoffset;
                 switch (type_num) {
                     CASE_INTERP_COEFF(NPY_BOOL, npy_bool,

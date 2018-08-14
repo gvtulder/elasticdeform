@@ -80,9 +80,9 @@ class TestDeformGrid(unittest.TestCase):
                         # generate random displacement vector
                         displacement = np.random.randn(len(shape), *points) * sigma
                         # generate random data
-                        X = np.random.rand(*shape)
-                        # generate more random data
-                        Y = np.random.rand(*shape)
+                        X = np.random.rand(*shape).astype('float64')
+                        # generate more random data, force a different data type
+                        Y = np.random.rand(*shape).astype('float32')
 
                         # test and compare
                         order_list = order if isinstance(order, list) else [order] * 2

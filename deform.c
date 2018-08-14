@@ -252,7 +252,8 @@ int DeformGrid(int ninputs,
     npy_intp kk, hh, ll, jj, ii;
     npy_intp size, max_filter_size = 0;
     double **splvals = NULL, **dsplvals = NULL;
-    npy_intp idimensions[NPY_MAXDIMS], istrides[NPY_MAXDIMS];
+    npy_intp idimensions[NPY_MAXDIMS];
+    npy_intp *istrides = NULL;
     npy_intp odimensions[NPY_MAXDIMS];
     npy_intp ddimensions[NPY_MAXDIMS], dstrides[NPY_MAXDIMS];
     npy_intp ooffsets[NPY_MAXDIMS];
@@ -270,7 +271,6 @@ int DeformGrid(int ninputs,
 
     for(kk = 0; kk < PyArray_NDIM(inputs[0]); kk++) {
         idimensions[kk] = PyArray_DIM(inputs[0], kk);
-        istrides[kk] = PyArray_STRIDE(inputs[0], kk);
         odimensions[kk] = PyArray_DIM(outputs[0], kk);
     }
     irank = PyArray_NDIM(inputs[0]);
@@ -278,6 +278,18 @@ int DeformGrid(int ninputs,
     for (kk = 0; kk < PyArray_NDIM(displacement); kk++) {
         ddimensions[kk] = PyArray_DIM(displacement, kk);
         dstrides[kk] = PyArray_STRIDE(displacement, kk);
+    }
+
+    istrides = malloc(ninputs * irank * sizeof(npy_intp));
+    if (NPY_UNLIKELY(!istrides)) {
+        NPY_END_THREADS;
+        PyErr_NoMemory();
+        goto exit;
+    }
+    for (ii = 0; ii < ninputs; ii++) {
+        for(kk = 0; kk < irank; kk++) {
+            istrides[ii * irank + kk] = PyArray_STRIDE(inputs[ii], kk);
+        }
     }
 
     /* check if the output is cropped */
@@ -443,11 +455,11 @@ int DeformGrid(int ninputs,
             for(jj = irank - 1; jj >= 0; jj--) {
                 if (ftmp[jj] < orders[ii]) {
                     ftmp[jj]++;
-                    kk += istrides[jj];
+                    kk += istrides[ii * irank + jj];
                     break;
                 } else {
                     ftmp[jj] = 0;
-                    kk -= istrides[jj] * orders[ii];
+                    kk -= istrides[ii * irank + jj] * orders[ii];
                 }
             }
         }
@@ -624,7 +636,7 @@ int DeformGrid(int ninputs,
                         start = (npy_intp)floor(cc + 0.5) - orders[ii] / 2;
                     }
                     /* get the offset to the start of the filter: */
-                    offset += istrides[hh] * start;
+                    offset += istrides[ii * irank + hh] * start;
                     if (start < 0 || start + orders[ii] >= idimensions[hh]) {
                         /* implement border mapping, if outside border: */
                         edge = 1;
@@ -646,7 +658,7 @@ int DeformGrid(int ninputs,
                                 }
                             }
                             /* calculate and store the offests at this edge: */
-                            edge_offsets[ii * irank + hh][ll] = istrides[hh] * (idx - start);
+                            edge_offsets[ii * irank + hh][ll] = istrides[ii * irank + hh] * (idx - start);
                         }
                     } else {
                         /* we are not at the border, use precalculated offsets: */
@@ -675,7 +687,7 @@ int DeformGrid(int ninputs,
                             if (edge_offsets[ii * irank + ll])
                                 idx += edge_offsets[ii * irank + ll][ff[ll]];
                             else
-                                idx += ff[ll] * istrides[ll];
+                                idx += ff[ll] * istrides[ii * irank + ll];
                         }
                     } else {
                         idx = foffsets[hh + ii * max_filter_size];
@@ -750,6 +762,7 @@ int DeformGrid(int ninputs,
 
  exit:
     NPY_END_THREADS;
+    free(istrides);
     free(edge_offsets);
     free(dedge_offsets);
     if (data_offsets) {

@@ -113,23 +113,43 @@ class TestDeformGrid(unittest.TestCase):
         points = (3, 3)
         shape = (100, 75)
         sigma = 25
-        order = 3
-        crop = None
+        for order in (1, 2, 3, 4):
+            for crop in (None, (slice(15, 25), slice(15, 50))):
+                # generate random displacement vector
+                displacement = np.random.randn(len(shape), *points) * sigma
+                # generate random data
+                X = np.random.rand(*shape)
+                # generate more random data
+                Y = np.random.rand(*shape)
 
-        # generate random displacement vector
-        displacement = np.random.randn(len(shape), *points) * sigma
-        # generate random data
-        X = np.random.rand(*shape)
-        # generate more random data
-        Y = np.random.rand(*shape)
+                # test and compare
+                res_X_ref = deform_grid_py(X, displacement, order=order, crop=crop)
+                res_Y_ref = deform_grid_py(Y, displacement, order=order, crop=crop)
+                [res_X_test, res_Y_test] = deform_grid_c([X, Y], displacement, order=order, crop=crop)
 
-        # test and compare
-        res_X_ref = deform_grid_py(X, displacement, order=order, crop=crop)
-        res_Y_ref = deform_grid_py(Y, displacement, order=order, crop=crop)
-        [res_X_test, res_Y_test] = deform_grid_c([X, Y], displacement, order=order, crop=crop)
+                np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
+                np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
 
-        np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
-        np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+    def test_multi_3d(self):
+        points = (3, 3, 3)
+        shape = (25, 25, 30)
+        sigma = 25
+        for order in (1, 2, 3, 4):
+            for crop in (None, (slice(15, 20), slice(15, 25), slice(2, 10))):
+                # generate random displacement vector
+                displacement = np.random.randn(len(shape), *points) * sigma
+                # generate random data
+                X = np.random.rand(*shape)
+                # generate more random data
+                Y = np.random.rand(*shape)
+
+                # test and compare
+                res_X_ref = deform_grid_py(X, displacement, order=order, crop=crop)
+                res_Y_ref = deform_grid_py(Y, displacement, order=order, crop=crop)
+                [res_X_test, res_Y_test] = deform_grid_c([X, Y], displacement, order=order, crop=crop)
+
+                np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
+                np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
 
     def run_comparison(self, shape, points, order=3, sigma=25, crop=None):
         # generate random displacement vector

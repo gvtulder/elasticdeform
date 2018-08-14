@@ -257,6 +257,7 @@ int DeformGrid(int ninputs,
     npy_intp ddimensions[NPY_MAXDIMS], dstrides[NPY_MAXDIMS];
     npy_intp ooffsets[NPY_MAXDIMS];
     npy_intp ncontrolpoints[NPY_MAXDIMS];
+    double displ[NPY_MAXDIMS];
     NI_Iterator *ios = NULL;
     int irank = 0;
 
@@ -474,11 +475,7 @@ int DeformGrid(int ninputs,
 
     size = PyArray_SIZE(outputs[0]);
     for(kk = 0; kk < size; kk++) {
-        int constant = 0, edge = 0;
-        npy_intp offset = 0;
-
         /* compute deplacement on this dimension */
-        double dd = 0.0;
         int dedge = 0;
         npy_intp ddoffset = 0;
         for(jj = 0; jj < irank; jj++) {
@@ -527,7 +524,7 @@ int DeformGrid(int ninputs,
             /* compute displacement */
             npy_intp *dff = dfcoordinates;
             const int type_num = PyArray_TYPE(displacement);
-            dd = 0.0;
+            displ[hh] = 0.0;
             for(jj = 0; jj < dfilter_size; jj++) {
                 double coeff = 0.0;
                 npy_intp idx = 0;
@@ -584,63 +581,69 @@ int DeformGrid(int ninputs,
                         coeff *= cur_dsplvals[ios[0].coordinates[ll]][dff[ll]];
                     cur_dsplvals += odimensions[ll];
                 }
-                dd += coeff;
+                displ[hh] += coeff;
                 dff += irank;
-            }
-
-
-            /* compute the coordinate: coordinate of output voxel io.coordinates[hh] + displacement dd */
-            /* if the input coordinate is outside the borders, map it: */
-            double cc = map_coordinate(ios[0].coordinates[hh] + ooffsets[hh] + dd, idimensions[hh], mode);
-            if (cc > -1.0) {
-                /* find the filter location along this axis: */
-                npy_intp start;
-                if (order & 1) {
-                    start = (npy_intp)floor(cc) - order / 2;
-                } else {
-                    start = (npy_intp)floor(cc + 0.5) - order / 2;
-                }
-                /* get the offset to the start of the filter: */
-                offset += istrides[hh] * start;
-                if (start < 0 || start + order >= idimensions[hh]) {
-                    /* implement border mapping, if outside border: */
-                    edge = 1;
-                    edge_offsets[hh] = data_offsets[hh];
-                    for(ll = 0; ll <= order; ll++) {
-                        npy_intp idx = start + ll;
-                        npy_intp len = idimensions[hh];
-                        if (len <= 1) {
-                            idx = 0;
-                        } else {
-                            npy_intp s2 = 2 * len - 2;
-                            if (idx < 0) {
-                                idx = s2 * (int)(-idx / s2) + idx;
-                                idx = idx <= 1 - len ? idx + s2 : -idx;
-                            } else if (idx >= len) {
-                                idx -= s2 * (int)(idx / s2);
-                                if (idx >= len)
-                                    idx = s2 - idx;
-                            }
-                        }
-                        /* calculate and store the offests at this edge: */
-                        edge_offsets[hh][ll] = istrides[hh] * (idx - start);
-                    }
-                } else {
-                    /* we are not at the border, use precalculated offsets: */
-                    edge_offsets[hh] = NULL;
-                }
-                get_spline_interpolation_weights(cc, order, splvals[hh]);
-            } else {
-                /* we use the constant border condition: */
-                constant = 1;
-                break;
             }
         }
 
+
         /* iterate over all inputs */
         for(ii = 0; ii < ninputs; ii++) {
-            double t = 0.0;
+            int constant = 0, edge = 0;
+            npy_intp offset = 0;
 
+            /* iterate over axes: */
+            for(hh = 0; hh < irank; hh++) {
+                /* compute the coordinate: coordinate of output voxel io.coordinates[hh] + displacement displ[hh] */
+                /* if the input coordinate is outside the borders, map it: */
+                double cc = map_coordinate(ios[ii].coordinates[hh] + ooffsets[hh] + displ[hh], idimensions[hh], mode);
+                if (cc > -1.0) {
+                    /* find the filter location along this axis: */
+                    npy_intp start;
+                    if (order & 1) {
+                        start = (npy_intp)floor(cc) - order / 2;
+                    } else {
+                        start = (npy_intp)floor(cc + 0.5) - order / 2;
+                    }
+                    /* get the offset to the start of the filter: */
+                    offset += istrides[hh] * start;
+                    if (start < 0 || start + order >= idimensions[hh]) {
+                        /* implement border mapping, if outside border: */
+                        edge = 1;
+                        edge_offsets[hh] = data_offsets[hh];
+                        for(ll = 0; ll <= order; ll++) {
+                            npy_intp idx = start + ll;
+                            npy_intp len = idimensions[hh];
+                            if (len <= 1) {
+                                idx = 0;
+                            } else {
+                                npy_intp s2 = 2 * len - 2;
+                                if (idx < 0) {
+                                    idx = s2 * (int)(-idx / s2) + idx;
+                                    idx = idx <= 1 - len ? idx + s2 : -idx;
+                                } else if (idx >= len) {
+                                    idx -= s2 * (int)(idx / s2);
+                                    if (idx >= len)
+                                        idx = s2 - idx;
+                                }
+                            }
+                            /* calculate and store the offests at this edge: */
+                            edge_offsets[hh][ll] = istrides[hh] * (idx - start);
+                        }
+                    } else {
+                        /* we are not at the border, use precalculated offsets: */
+                        edge_offsets[hh] = NULL;
+                    }
+                    get_spline_interpolation_weights(cc, order, splvals[hh]);
+                } else {
+                    /* we use the constant border condition: */
+                    constant = 1;
+                    break;
+                }
+            }
+
+            /* interpolate value for this input */
+            double t = 0.0;
             if (!constant) {
                 npy_intp *ff = fcoordinates;
                 const int type_num = PyArray_TYPE(inputs[ii]);

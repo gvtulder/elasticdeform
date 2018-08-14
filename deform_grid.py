@@ -27,7 +27,7 @@ def deform_random_grid(X, sigma=25, points=3, **kwargs):
     return deform_grid(X, displacement, **kwargs)
 
 
-def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
+def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True):
     """
     Elastic deformation with a deformation grid
 
@@ -39,6 +39,7 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
     mode: border mode (nearest, wrap, reflect, mirror, constant)
     cval: constant value to be used if mode == 'constant'
     crop: None, or a list of slice() objects to crop the output
+    prefilter: bool, if True the input X will be pre-filtered with a spline filter
 
     displacement is a NumPy array with displacement vectors for each
     control points. For example, to deform a 2D image with 3 x 5 control
@@ -143,7 +144,7 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
     # prefilter inputs
     Xs_f = []
     for i in range(n_inputs):
-        if order[i] > 1:
+        if prefilter and order[i] > 1:
             Xs_f.append(scipy.ndimage.spline_filter(Xs[i], order=order[i]))
         else:
             Xs_f.append(Xs[i])

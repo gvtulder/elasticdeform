@@ -240,15 +240,16 @@ case NPY_##_TYPE:                                    \
     *(_type *)_po = (_type)_t;                       \
     break
 
-int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject* output_offset,
-               PyArrayObject* output, int order, int mode, double cval)
+int DeformGrid(int ninputs,
+               PyArrayObject** inputs, PyArrayObject* displacement, PyArrayObject* output_offset,
+               PyArrayObject** outputs, int order, int mode, double cval)
 {
-    char *po, *pi, *pd = NULL;
+    char **pos = NULL, **pis = NULL, *pd = NULL;
     npy_intp **edge_offsets = NULL, **data_offsets = NULL, filter_size, dfilter_size;
     npy_intp **dedge_offsets = NULL, **ddata_offsets = NULL;
     npy_intp ftmp[NPY_MAXDIMS], *fcoordinates = NULL, *foffsets = NULL;
     npy_intp dftmp[NPY_MAXDIMS], *dfcoordinates = NULL, *dfoffsets = NULL;
-    npy_intp kk, hh, ll, jj;
+    npy_intp kk, hh, ll, jj, ii;
     npy_intp size;
     double **splvals = NULL, **dsplvals = NULL;
     npy_intp idimensions[NPY_MAXDIMS], istrides[NPY_MAXDIMS];
@@ -256,7 +257,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     npy_intp ddimensions[NPY_MAXDIMS], dstrides[NPY_MAXDIMS];
     npy_intp ooffsets[NPY_MAXDIMS];
     npy_intp ncontrolpoints[NPY_MAXDIMS];
-    NI_Iterator io;
+    NI_Iterator *ios = NULL;
     int irank = 0;
 
     /* spline order for deplacement */
@@ -266,12 +267,12 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
 
     NPY_BEGIN_THREADS;
 
-    for(kk = 0; kk < PyArray_NDIM(input); kk++) {
-        idimensions[kk] = PyArray_DIM(input, kk);
-        istrides[kk] = PyArray_STRIDE(input, kk);
-        odimensions[kk] = PyArray_DIM(output, kk);
+    for(kk = 0; kk < PyArray_NDIM(inputs[0]); kk++) {
+        idimensions[kk] = PyArray_DIM(inputs[0], kk);
+        istrides[kk] = PyArray_STRIDE(inputs[0], kk);
+        odimensions[kk] = PyArray_DIM(outputs[0], kk);
     }
-    irank = PyArray_NDIM(input);
+    irank = PyArray_NDIM(inputs[0]);
 
     for (kk = 0; kk < PyArray_NDIM(displacement); kk++) {
         ddimensions[kk] = PyArray_DIM(displacement, kk);
@@ -279,11 +280,11 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     }
 
     /* check if the output is cropped */
-    for(kk = 0; kk < PyArray_NDIM(input); kk++) {
+    for(kk = 0; kk < irank; kk++) {
         ooffsets[kk] = 0;
     }
     if (output_offset) {
-        for(kk = 0; kk < PyArray_NDIM(input); kk++) {
+        for(kk = 0; kk < irank; kk++) {
             ooffsets[kk] = *(npy_intp *)(PyArray_GETPTR1(output_offset, kk));
         }
     }
@@ -380,12 +381,29 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         dfilter_size *= dorder + 1;
 
     /* initialize output iterator: */
-    if (!NI_InitPointIterator(output, &io))
+    ios = malloc(ninputs * sizeof(NI_Iterator));
+    if (NPY_UNLIKELY(!ios)) {
+        NPY_END_THREADS;
+        PyErr_NoMemory();
         goto exit;
+    }
+    for (ii = 0; ii < ninputs; ii++) {
+        if (!NI_InitPointIterator(outputs[ii], &ios[ii]))
+            goto exit;
+    }
 
     /* get data pointers: */
-    pi = (void *)PyArray_DATA(input);
-    po = (void *)PyArray_DATA(output);
+    pis = malloc(ninputs * sizeof(char*));
+    pos = malloc(ninputs * sizeof(char*));
+    if (NPY_UNLIKELY(!pis || !pos)) {
+        NPY_END_THREADS;
+        PyErr_NoMemory();
+        goto exit;
+    }
+    for (ii = 0; ii < ninputs; ii++) {
+        pis[ii] = (void *)PyArray_DATA(inputs[ii]);
+        pos[ii] = (void *)PyArray_DATA(outputs[ii]);
+    }
     pd = (void *)PyArray_DATA(displacement);
 
     /* make a table of all possible coordinates within the spline filter: */
@@ -454,9 +472,8 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         }
     }
 
-    size = PyArray_SIZE(output);
+    size = PyArray_SIZE(outputs[0]);
     for(kk = 0; kk < size; kk++) {
-        double t = 0.0;
         int constant = 0, edge = 0;
         npy_intp offset = 0;
 
@@ -466,7 +483,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
         npy_intp ddoffset = 0;
         for(jj = 0; jj < irank; jj++) {
             /* assumption: by definition, cp is inside the deplacement array */
-            double cp = (double)(ncontrolpoints[jj] - 1) * (double)(io.coordinates[jj] + ooffsets[jj]) / (double)(idimensions[jj] - 1);
+            double cp = (double)(ncontrolpoints[jj] - 1) * (double)(ios[0].coordinates[jj] + ooffsets[jj]) / (double)(idimensions[jj] - 1);
             /* find the filter location along this axis: */
             npy_intp start;
             if (dorder & 1) {
@@ -564,7 +581,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
                 double **cur_dsplvals = dsplvals;
                 for(ll = 0; ll < irank; ll++) {
                     if (dorder > 0)
-                        coeff *= cur_dsplvals[io.coordinates[ll]][dff[ll]];
+                        coeff *= cur_dsplvals[ios[0].coordinates[ll]][dff[ll]];
                     cur_dsplvals += odimensions[ll];
                 }
                 dd += coeff;
@@ -574,7 +591,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
 
             /* compute the coordinate: coordinate of output voxel io.coordinates[hh] + displacement dd */
             /* if the input coordinate is outside the borders, map it: */
-            double cc = map_coordinate(io.coordinates[hh] + ooffsets[hh] + dd, idimensions[hh], mode);
+            double cc = map_coordinate(ios[0].coordinates[hh] + ooffsets[hh] + dd, idimensions[hh], mode);
             if (cc > -1.0) {
                 /* find the filter location along this axis: */
                 npy_intp start;
@@ -620,89 +637,94 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
             }
         }
 
-        if (!constant) {
-            npy_intp *ff = fcoordinates;
-            const int type_num = PyArray_TYPE(input);
-            t = 0.0;
-            for(hh = 0; hh < filter_size; hh++) {
-                double coeff = 0.0;
-                npy_intp idx = 0;
+        /* iterate over all inputs */
+        for(ii = 0; ii < ninputs; ii++) {
+            double t = 0.0;
 
-                if (NPY_UNLIKELY(edge)) {
-                    for(ll = 0; ll < irank; ll++) {
-                        if (edge_offsets[ll])
-                            idx += edge_offsets[ll][ff[ll]];
-                        else
-                            idx += ff[ll] * istrides[ll];
+            if (!constant) {
+                npy_intp *ff = fcoordinates;
+                const int type_num = PyArray_TYPE(inputs[ii]);
+                t = 0.0;
+                for(hh = 0; hh < filter_size; hh++) {
+                    double coeff = 0.0;
+                    npy_intp idx = 0;
+
+                    if (NPY_UNLIKELY(edge)) {
+                        for(ll = 0; ll < irank; ll++) {
+                            if (edge_offsets[ll])
+                                idx += edge_offsets[ll][ff[ll]];
+                            else
+                                idx += ff[ll] * istrides[ll];
+                        }
+                    } else {
+                        idx = foffsets[hh];
                     }
-                } else {
-                    idx = foffsets[hh];
+                    idx += offset;
+                    switch (type_num) {
+                        CASE_INTERP_COEFF(NPY_BOOL, npy_bool,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_UBYTE, npy_ubyte,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_USHORT, npy_ushort,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_UINT, npy_uint,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_ULONG, npy_ulong,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_ULONGLONG, npy_ulonglong,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_BYTE, npy_byte,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_SHORT, npy_short,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_INT, npy_int,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_LONG, npy_long,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_LONGLONG, npy_longlong,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_FLOAT, npy_float,
+                                          coeff, pis[ii], idx);
+                        CASE_INTERP_COEFF(NPY_DOUBLE, npy_double,
+                                          coeff, pis[ii], idx);
+                    default:
+                        NPY_END_THREADS;
+                        PyErr_SetString(PyExc_RuntimeError,
+                                        "data type not supported");
+                        goto exit;
+                    }
+                    /* calculate the interpolated value: */
+                    for(ll = 0; ll < irank; ll++)
+                        if (order > 0)
+                            coeff *= splvals[ll][ff[ll]];
+                    t += coeff;
+                    ff += irank;
                 }
-                idx += offset;
-                switch (type_num) {
-                    CASE_INTERP_COEFF(NPY_BOOL, npy_bool,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_UBYTE, npy_ubyte,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_USHORT, npy_ushort,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_UINT, npy_uint,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_ULONG, npy_ulong,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_ULONGLONG, npy_ulonglong,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_BYTE, npy_byte,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_SHORT, npy_short,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_INT, npy_int,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_LONG, npy_long,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_LONGLONG, npy_longlong,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_FLOAT, npy_float,
-                                      coeff, pi, idx);
-                    CASE_INTERP_COEFF(NPY_DOUBLE, npy_double,
-                                      coeff, pi, idx);
-                default:
-                    NPY_END_THREADS;
-                    PyErr_SetString(PyExc_RuntimeError,
-                                    "data type not supported");
-                    goto exit;
-                }
-                /* calculate the interpolated value: */
-                for(ll = 0; ll < irank; ll++)
-                    if (order > 0)
-                        coeff *= splvals[ll][ff[ll]];
-                t += coeff;
-                ff += irank;
+            } else {
+                t = cval;
             }
-        } else {
-            t = cval;
+            /* store output value: */
+            switch (PyArray_TYPE(outputs[ii])) {
+                CASE_INTERP_OUT(NPY_BOOL, npy_bool, pos[ii], t);
+                CASE_INTERP_OUT_UINT(UBYTE, npy_ubyte, pos[ii], t);
+                CASE_INTERP_OUT_UINT(USHORT, npy_ushort, pos[ii], t);
+                CASE_INTERP_OUT_UINT(UINT, npy_uint, pos[ii], t);
+                CASE_INTERP_OUT_UINT(ULONG, npy_ulong, pos[ii], t);
+                CASE_INTERP_OUT_UINT(ULONGLONG, npy_ulonglong, pos[ii], t);
+                CASE_INTERP_OUT_INT(BYTE, npy_byte, pos[ii], t);
+                CASE_INTERP_OUT_INT(SHORT, npy_short, pos[ii], t);
+                CASE_INTERP_OUT_INT(INT, npy_int, pos[ii], t);
+                CASE_INTERP_OUT_INT(LONG, npy_long, pos[ii], t);
+                CASE_INTERP_OUT_INT(LONGLONG, npy_longlong, pos[ii], t);
+                CASE_INTERP_OUT(NPY_FLOAT, npy_float, pos[ii], t);
+                CASE_INTERP_OUT(NPY_DOUBLE, npy_double, pos[ii], t);
+            default:
+                NPY_END_THREADS;
+                PyErr_SetString(PyExc_RuntimeError, "data type not supported");
+                goto exit;
+            }
+            NI_ITERATOR_NEXT(ios[ii], pos[ii]);
         }
-        /* store output value: */
-        switch (PyArray_TYPE(output)) {
-            CASE_INTERP_OUT(NPY_BOOL, npy_bool, po, t);
-            CASE_INTERP_OUT_UINT(UBYTE, npy_ubyte, po, t);
-            CASE_INTERP_OUT_UINT(USHORT, npy_ushort, po, t);
-            CASE_INTERP_OUT_UINT(UINT, npy_uint, po, t);
-            CASE_INTERP_OUT_UINT(ULONG, npy_ulong, po, t);
-            CASE_INTERP_OUT_UINT(ULONGLONG, npy_ulonglong, po, t);
-            CASE_INTERP_OUT_INT(BYTE, npy_byte, po, t);
-            CASE_INTERP_OUT_INT(SHORT, npy_short, po, t);
-            CASE_INTERP_OUT_INT(INT, npy_int, po, t);
-            CASE_INTERP_OUT_INT(LONG, npy_long, po, t);
-            CASE_INTERP_OUT_INT(LONGLONG, npy_longlong, po, t);
-            CASE_INTERP_OUT(NPY_FLOAT, npy_float, po, t);
-            CASE_INTERP_OUT(NPY_DOUBLE, npy_double, po, t);
-        default:
-            NPY_END_THREADS;
-            PyErr_SetString(PyExc_RuntimeError, "data type not supported");
-            goto exit;
-        }
-        NI_ITERATOR_NEXT(io, po);
     }
 
  exit:
@@ -733,5 +755,8 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     free(fcoordinates);
     free(dfoffsets);
     free(dfcoordinates);
+    free(pos);
+    free(pis);
+    free(ios);
     return PyErr_Occurred() ? 0 : 1;
 }

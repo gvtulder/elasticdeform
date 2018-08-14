@@ -60,29 +60,37 @@ NI_ObjectToOutputArray(PyObject *object, PyArrayObject **array)
 
 static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
 {
-    PyArrayObject *input = NULL, *output = NULL;
+    PyArrayObject *tmpInput = NULL, *tmpOutput = NULL;
+    PyArrayObject **input = NULL, **output = NULL;
     PyArrayObject *displacement = NULL, *output_offset = NULL;
     int mode, order;
     double cval;
 
     if (!PyArg_ParseTuple(args, "O&O&O&O&iid",
-                          NI_ObjectToInputArray, &input,
+                          NI_ObjectToInputArray, &tmpInput,
                           NI_ObjectToInputArray, &displacement,
                           NI_ObjectToOptionalInputArray, &output_offset,
-                          NI_ObjectToOutputArray, &output,
+                          NI_ObjectToOutputArray, &tmpOutput,
                           &order, &mode, &cval))
         goto exit;
+    input = malloc(1 * sizeof(PyArrayObject*));
+    output = malloc(1 * sizeof(PyArrayObject*));
+    input[0] = tmpInput;
+    output[0] = tmpOutput;
 
-    DeformGrid(input, displacement, output_offset, output, order, (NI_ExtendMode)mode, cval);
+    // TODO
+    DeformGrid(1, input, displacement, output_offset, output, order, (NI_ExtendMode)mode, cval);
     #ifdef HAVE_WRITEBACKIFCOPY
-        PyArray_ResolveWritebackIfCopy(output);
+        PyArray_ResolveWritebackIfCopy(tmpOutput);
     #endif
 
 exit:
-    Py_XDECREF(input);
-    Py_XDECREF(output);
+    Py_XDECREF(tmpInput);
+    Py_XDECREF(tmpOutput);
     Py_XDECREF(displacement);
     Py_XDECREF(output_offset);
+    free(input);
+    free(output);
     return PyErr_Occurred() ? NULL : Py_BuildValue("");
 }
 

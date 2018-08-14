@@ -3,6 +3,30 @@ import scipy.ndimage
 
 import _deform_grid
 
+def deform_random_grid(X, sigma=25, points=3, **kwargs):
+    """
+    Elastic deformation with a random deformation grid
+
+    Parameters
+    ----------
+    sigma: standard deviation of the normal distribution
+    points: number of points of the each side of the square grid
+
+    See deform_grid for more details.
+    """
+    if isinstance(X, numpy.ndarray):
+        X_shape = X.shape
+    else:
+        assert isinstance(X, (list, tuple))
+        X_shape = X[0].shape
+
+    if not isinstance(points, (list, tuple)):
+        points = [points] * len(X_shape)
+
+    displacement = numpy.random.randn(len(X_shape), *points) * sigma
+    return deform_grid(X, displacement, **kwargs)
+
+
 def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
     """
     Elastic deformation with a deformation grid
@@ -34,6 +58,9 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
 
     Notes
     -----
+    See the SciPy documentation for scipy.ndimage.interpolation.map_coordinates
+    for more details on some of the parameters.
+
     Based on Florian Calvet's Python implementation.
 
     Elastic deformation approach found in

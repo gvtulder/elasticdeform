@@ -33,6 +33,13 @@ def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=N
 
 
 class TestDeformGrid(unittest.TestCase):
+    def test_random(self):
+        for points in (3, (3, 5)):
+            for shape in ((100, 100), (100, 75)):
+                for order in (0, 1, 2, 3, 4):
+                    X = np.random.rand(*shape)
+                    deform_grid.deform_random_grid(X, points=points)
+
     def test_basic_2d(self):
         for points in ((3, 3), (3, 5), (1, 5)):
             for shape in ((100, 100), (100, 75)):

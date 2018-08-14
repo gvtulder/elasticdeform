@@ -250,7 +250,7 @@ int DeformGrid(PyArrayObject* input, PyArrayObject* displacement, PyArrayObject*
     npy_intp dftmp[NPY_MAXDIMS], *dfcoordinates = NULL, *dfoffsets = NULL;
     npy_intp kk, hh, ll, jj;
     npy_intp size;
-    double **splvals = NULL, **dsplvals = NULL, icoor[NPY_MAXDIMS], cpoint[NPY_MAXDIMS];
+    double **splvals = NULL, **dsplvals = NULL;
     npy_intp idimensions[NPY_MAXDIMS], istrides[NPY_MAXDIMS];
     npy_intp odimensions[NPY_MAXDIMS];
     npy_intp ddimensions[NPY_MAXDIMS], dstrides[NPY_MAXDIMS];

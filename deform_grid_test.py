@@ -41,8 +41,8 @@ def deform_grid_c(X, displacement, order=3, crop=None):
                 output_shape[d] = stop - start
                 if start > 0:
                     output_offset[d] = start
-            elif crop[d] is not None:
-                raise Exception("Crop must be a slice or None.")
+            else:
+                raise Exception("Crop must be a slice.")
         if any(o > 0 for o in output_offset):
             output_offset = np.array(output_offset)
         else:
@@ -88,6 +88,13 @@ class TestDeformGrid(unittest.TestCase):
                      (slice(50, 100), slice(50, 100))):
             for order in (1, 2, 3, 4):
                 self.run_comparison(shape, points, crop=crop, order=order)
+
+    def test_crop_3d(self):
+        points = (3, 3, 5)
+        shape = (25, 25, 25)
+        order = 3
+        for crop in ((slice(15, 25), slice(None), slice(None)),):
+            self.run_comparison(shape, points, crop=crop, order=order)
 
     def run_comparison(self, shape, points, order=3, sigma=25, crop=None):
         # generate random displacement vector

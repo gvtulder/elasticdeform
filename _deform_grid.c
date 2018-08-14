@@ -63,16 +63,20 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
     PyObject *inputList = NULL, *outputList = NULL;
     PyArrayObject **inputs = NULL, **outputs = NULL;
     PyArrayObject *displacement = NULL, *output_offset = NULL;
-    int mode, order, i;
-    double cval;
+    PyArrayObject *orders = NULL, *modes = NULL, *cvals = NULL;
+    int *order = NULL, *mode = NULL;
+    double *cval = NULL;
+    int i;
     Py_ssize_t ninputs = 0;
 
-    if (!PyArg_ParseTuple(args, "O!O&O&O!iid",
+    if (!PyArg_ParseTuple(args, "O!O&O&O!O&O&O&",
                           &PyList_Type, &inputList,
                           NI_ObjectToInputArray, &displacement,
                           NI_ObjectToOptionalInputArray, &output_offset,
                           &PyList_Type, &outputList,
-                          &order, &mode, &cval))
+                          NI_ObjectToInputArray, &orders,
+                          NI_ObjectToInputArray, &modes,
+                          NI_ObjectToInputArray, &cvals))
         goto exit;
 
     ninputs = PyList_Size(inputList);
@@ -90,9 +94,22 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
         Py_INCREF(outputs[i]);
     }
 
+    // TODO check size and type of orders, modes, cvals
+    // TODO check malloc
+    order = malloc(ninputs * sizeof(int));
+    mode = malloc(ninputs * sizeof(int));
+    cval = malloc(ninputs * sizeof(double));
+    for(i = 0; i < ninputs; i++) {
+        order[i] = *(int *)PyArray_GETPTR1(orders, i);
+        mode[i] = *(int *)PyArray_GETPTR1(modes, i);
+        cval[i] = *(double *)PyArray_GETPTR1(cvals, i);
+    }
+
+    // TODO check output_offset type (should be npy_intp)
+
     // TODO
     DeformGrid(ninputs, inputs, displacement, output_offset,
-               outputs, order, (NI_ExtendMode)mode, cval);
+               outputs, order, mode, cval);
     #ifdef HAVE_WRITEBACKIFCOPY
         for(i = 0; i < ninputs; i++) {
             PyArray_ResolveWritebackIfCopy(outputs[i]);
@@ -102,6 +119,9 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
 exit:
     Py_XDECREF(displacement);
     Py_XDECREF(output_offset);
+    Py_XDECREF(orders);
+    Py_XDECREF(modes);
+    Py_XDECREF(cvals);
     for(i = 0; i < ninputs; i++) {
         if (inputs)
             Py_XDECREF(inputs[i]);
@@ -110,6 +130,9 @@ exit:
     }
     free(inputs);
     free(outputs);
+    free(order);
+    free(mode);
+    free(cval);
     return PyErr_Occurred() ? NULL : Py_BuildValue("");
 }
 

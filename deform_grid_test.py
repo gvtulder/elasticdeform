@@ -68,8 +68,9 @@ def deform_grid_c(X_in, displacement, order=3, crop=None):
     for d in range(1, displacement.ndim):
         displacement_sf = scipy.ndimage.spline_filter1d(displacement_sf, axis=d, order=3)
 
-    mode = 4  # NI_EXTEND_CONSTANT
-    cval = 0.0
+    order = np.array([order] * len(X))
+    mode = np.array([4] * len(X))  # NI_EXTEND_CONSTANT
+    cval = np.array([0.0] * len(X))
 
     outputs = [np.zeros(output_shape, dtype=x.dtype) for x in X]
     _deform_grid.deform_grid(X_sf, displacement_sf, output_offset, outputs, order, mode, cval)

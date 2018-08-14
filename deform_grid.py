@@ -121,9 +121,10 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
         else:
             Xs_f.append(Xs[i])
     # prefilter displacement
-    displacement_f = displacement
+    displacement_f = numpy.zeros_like(displacement)
     for d in range(1, displacement.ndim):
-        displacement_f = scipy.ndimage.spline_filter1d(displacement_f, axis=d, order=3)
+        scipy.ndimage.spline_filter1d(displacement, axis=d, order=3, output=displacement_f)
+        displacement = displacement_f
 
     # prepare output arrays
     outputs = [numpy.zeros(output_shape, dtype=x.dtype) for x in Xs]

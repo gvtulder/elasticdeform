@@ -3,7 +3,7 @@ Elastic deformations for N-dimensional images (Python, SciPy, NumPy)
 
 This library implements elastic grid-based deformations for N-dimensional images.
 
-The elastic deformation approach is found in
+The elastic deformation approach is described in
 *   Ronneberger, Fischer, and Brox, "U-Net: Convolutional Networks for Biomedical
     Image Segmentation" (https://arxiv.org/abs/1505.04597)
 *   Çiçek et al., "3D U-Net: Learning Dense Volumetric

@@ -2,9 +2,14 @@ import setuptools
 from distutils.core import setup, Extension
 import numpy.distutils.misc_util
 
+with open("README.md") as f:
+    readme_txt = f.read()
+
 setup(name='elasticdeform',
-      version='0.1.0',
+      version='0.2.0',
       description='Elastic deformations for N-D images.',
+      long_description_content_type='text/markdown',
+      long_description=readme_txt,
       author='Gijs van Tulder',
       author_email='gvtulder@gmail.com',
       url='https://github.com/gvtulder/elasticdeform',

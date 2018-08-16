@@ -19,6 +19,8 @@ Installation
 ------------
 
 ```
+pip install elasticdeform
+or
 pip install git+https://github.com/gvtulder/elasticdeform
 ```
 

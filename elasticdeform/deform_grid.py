@@ -9,8 +9,14 @@ def deform_random_grid(X, sigma=25, points=3, **kwargs):
 
     Parameters
     ----------
+    X: image, or list of images of the same size
     sigma: standard deviation of the normal distribution
-    points: number of points of the each side of the square grid
+    points: number of points of the deformation grid
+
+    This generates a random, square deformation grid with displacements
+    sampled from from a normal distribution with standard deviation sigma.
+    The deformation is then applied to the image or list of images,
+    similar to deform_grid.
 
     See deform_grid for more details.
     """
@@ -62,17 +68,18 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
     See the SciPy documentation for scipy.ndimage.interpolation.map_coordinates
     for more details on some of the parameters.
 
-    Based on Florian Calvet's Python implementation.
+    Based on a Python implementation by Florian Calvet.
 
-    Elastic deformation approach found in
+    The elastic deformation approach is found in
         Ronneberger, Fischer, and Brox, "U-Net: Convolutional Networks for Biomedical
-        Image Segmentation" also used in Çiçek et al., "3D U-Net: Learning Dense Volumetric
-        Segmentation from Sparse Annotation"
-    based on a coarsed displacement grid interpolated to generate displacement for every pixel
-    deemed to represent more realistic, biologically explainable deformation of the image
-    for each dimension, a value for the displacement is generated on each point of the grid
-    then interpolated to give an array of displacement values, which is then added to the corresponding array of coordinates
-    the resulting (list of) array of coordinates is mapped to the original image to give the final image
+        Image Segmentation"  https://arxiv.org/abs/1505.04597
+        Çiçek et al., "3D U-Net: Learning Dense Volumetric
+        Segmentation from Sparse Annotation"  https://arxiv.org/abs/1606.06650
+
+    The procedure generates a coarse displacement grid with a random displacement
+    for each grid point. This grid is then interpolated to compute a displacement for
+    each pixel in the input image. The input image is then deformed using the
+    displacement vectors and a spline interpolation.
     """
     if isinstance(X, numpy.ndarray):
         Xs = [X]

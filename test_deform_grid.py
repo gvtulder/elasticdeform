@@ -2,7 +2,7 @@ import numpy as np
 import scipy.ndimage
 import unittest
 
-import deform as deform_grid
+import elasticdeform
 
 # Python implementation
 def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
@@ -28,7 +28,7 @@ def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=Non
 
 # C implementation wrapper
 def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None):
-    return deform_grid.deform_grid(X_in, displacement, order, mode, cval, crop)
+    return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop)
 
 
 class TestDeformGrid(unittest.TestCase):
@@ -37,7 +37,7 @@ class TestDeformGrid(unittest.TestCase):
             for shape in ((100, 100), (100, 75)):
                 for order in (0, 1, 2, 3, 4):
                     X = np.random.rand(*shape)
-                    deform_grid.deform_random_grid(X, points=points)
+                    elasticdeform.deform_random_grid(X, points=points)
 
     def test_basic_2d(self):
         for points in ((3, 3), (3, 5), (1, 5)):

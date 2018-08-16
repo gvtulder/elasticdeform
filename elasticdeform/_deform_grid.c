@@ -88,10 +88,8 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
     for(i = 0; i < ninputs; i++) {
         if (!NI_ObjectToInputArray(PyList_GetItem(inputList, i), &inputs[i]))
             goto exit;
-        Py_INCREF(inputs[i]);
         if (!NI_ObjectToOutputArray(PyList_GetItem(outputList, i), &outputs[i]))
             goto exit;
-        Py_INCREF(outputs[i]);
     }
 
     // TODO check size and type of orders, modes, cvals

@@ -94,9 +94,7 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
     n_inputs = len(Xs)
     X_ndim = Xs[0].ndim
     X_shape = Xs[0].shape
-    X_strides = Xs[0].strides
     assert all(X_shape == x.shape for x in Xs), 'All elements of X should have the same shape.'
-    assert all(x.flags['C_CONTIGUOUS'] for x in Xs), 'All elements of X must be contiguous.'
 
     # prepare output cropping
     if crop is not None:

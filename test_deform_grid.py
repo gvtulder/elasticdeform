@@ -5,7 +5,7 @@ import unittest
 import elasticdeform
 
 # Python implementation
-def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None):
+def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True):
     # compute number of control points in each dimension
     points = [displacement[0].shape[d] for d in range(X.ndim)]
 
@@ -24,11 +24,11 @@ def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=Non
         # adding the displacement
         coordinates[i] = np.add(coordinates[i], yd)
 
-    return scipy.ndimage.map_coordinates(X, coordinates, order=order, cval=cval, mode=mode)
+    return scipy.ndimage.map_coordinates(X, coordinates, order=order, cval=cval, mode=mode, prefilter=prefilter)
 
 # C implementation wrapper
-def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None):
-    return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop)
+def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True):
+    return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop, prefilter)
 
 
 class TestDeformGrid(unittest.TestCase):
@@ -114,6 +114,22 @@ class TestDeformGrid(unittest.TestCase):
 
                 np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
                 np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+
+    def test_different_strides(self):
+        # test for multiple inputs with unequal strides
+        shape = (200, 150)
+
+        X = np.random.rand(*shape)
+        Y = np.array(X, order='F')
+        # the inputs have the same values, but different strides
+        self.assertNotEqual(X.strides, Y.strides)
+
+        displacement = np.random.randn(2, 3, 3) * 25
+        # test and compare
+        # disable prefiltering, since that would create new input arrays with equal strides
+        res_X_ref = deform_grid_py(X, displacement, prefilter=False)
+        res_Y_ref = deform_grid_py(Y, displacement, prefilter=False)
+        [res_X_test, res_Y_test] = deform_grid_c([X, Y], displacement, prefilter=False)
 
     def run_comparison(self, shape, points, order=3, sigma=25, crop=None, mode='constant'):
         # generate random displacement vector

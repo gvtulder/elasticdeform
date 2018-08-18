@@ -57,6 +57,24 @@ a different spline order for each input.
 [X_deformed, Y_deformed] = elasticdeform.deform_random_grid([X, Y], order=[3, 0])
 ```
 
+### Multi-channel images
+
+By default, a deformation will be applied to every dimension of the input. If you
+have multi-channel images, you can use the `axis` parameter to specify which axes
+should be deformed. The same deformation will be applied for each channel.
+
+For example, to deform an RGB image across the first two dimensions, run:
+```python
+X_deformed = elasticdeform.deform_random_grid(X, axis=(0, 1))
+```
+
+When deforming multiple inputs, you can provide a tuple of axes for each input:
+```python
+X = numpy.random.rand(3, 200, 300)
+Y = numpy.random.rand(200, 300)
+[X_deformed, Y_deformed] = elasticdeform.deform_random_grid([X, Y], axis=[(1, 2), (0, 1)])
+```
+
 ### Cropping
 
 If you intend to crop a small subpatch from the deformed image, you can provide

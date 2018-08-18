@@ -1,34 +1,51 @@
 import numpy as np
 import scipy.ndimage
 import unittest
+import itertools
 
 import elasticdeform
 
 # Python implementation
-def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True):
+def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+    if axis is None:
+        axis = tuple(range(X.ndim))
+    elif isinstance(axis, int):
+        axis = (axis,)
+
     # compute number of control points in each dimension
-    points = [displacement[0].shape[d] for d in range(X.ndim)]
+    points = [displacement[0].shape[d] for d in range(len(axis))]
 
     # creates the grid of coordinates of the points of the image (an ndim array per dimension)
-    coordinates = np.meshgrid(*[np.arange(X.shape[d]) for d in range(X.ndim)], indexing='ij')
+    coordinates = np.meshgrid(*[np.arange(X.shape[d]) for d in axis], indexing='ij')
     # creates the grid of coordinates of the points of the image in the "deformation grid" frame of reference
-    xi = np.meshgrid(*[np.linspace(0, points[d] - 1, X.shape[d]) for d in range(X.ndim)], indexing='ij')
+    xi = np.meshgrid(*[np.linspace(0, p - 1, X.shape[d]) for d, p in zip(axis, points)], indexing='ij')
 
     if crop is not None:
         coordinates = [c[crop] for c in coordinates]
         xi = [x[crop] for x in xi]
+        # crop is given only for the axes in axis, convert to all dimensions for the output
+        crop = tuple(crop[axis.index(i)] if i in axis else slice(None) for i in range(X.ndim))
+    else:
+        crop = (slice(None),) * X.ndim
 
     # add the displacement to the coordinates
-    for i in range(X.ndim):
+    for i in range(len(axis)):
         yd = scipy.ndimage.map_coordinates(displacement[i], xi, order=3)
         # adding the displacement
         coordinates[i] = np.add(coordinates[i], yd)
 
-    return scipy.ndimage.map_coordinates(X, coordinates, order=order, cval=cval, mode=mode, prefilter=prefilter)
+    out = np.zeros(X[crop].shape, dtype=X.dtype)
+    # iterate over the non-deformed axes
+    iter_axes = [range(X.shape[d]) if d not in axis else [slice(None)]
+                 for d in range(X.ndim)]
+    for a in itertools.product(*iter_axes):
+        scipy.ndimage.map_coordinates(X[a], coordinates, output=out[a],
+                                      order=order, cval=cval, mode=mode, prefilter=prefilter)
+    return out
 
 # C implementation wrapper
-def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True):
-    return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop, prefilter)
+def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+    return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop, prefilter, axis)
 
 
 class TestDeformGrid(unittest.TestCase):
@@ -131,15 +148,53 @@ class TestDeformGrid(unittest.TestCase):
         res_Y_ref = deform_grid_py(Y, displacement, prefilter=False)
         [res_X_test, res_Y_test] = deform_grid_c([X, Y], displacement, prefilter=False)
 
-    def run_comparison(self, shape, points, order=3, sigma=25, crop=None, mode='constant'):
+    def test_axis(self):
+        self.run_comparison(shape=(30, 20, 3), points=(3, 3), axis=(0, 1))
+        self.run_comparison(shape=(20, 3, 30), points=(3, 3), axis=(0, 2))
+        self.run_comparison(shape=(100, 200, 3), points=(3, 3), axis=(0, 1))
+        self.run_comparison(shape=(200, 3, 100), points=(3, 3), axis=(0, 2))
+        self.run_comparison(shape=(200, 3, 100, 4), points=(3, 3), axis=(0, 2))
+
+        # test multiple inputs, same axes
+        X = np.random.rand(3, 90, 80, 7)
+        Y = np.random.rand(7, 90, 80)
+        displacement = np.random.randn(2, 5, 3) * 25
+        res_X_ref = deform_grid_py(X, displacement, axis=(1, 2))
+        res_Y_ref = deform_grid_py(Y, displacement, axis=(1, 2))
+        res_X_test, res_Y_test = deform_grid_c([X, Y], displacement, axis=(1, 2))
+        np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
+        np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+
+        # test multiple inputs, different axes
+        X = np.random.rand(3, 20, 30)
+        Y = np.random.rand(20, 30)
+        displacement = np.random.randn(2, 5, 3) * 25
+        res_X_ref = deform_grid_py(X, displacement, axis=(1, 2))
+        res_Y_ref = deform_grid_py(Y, displacement, axis=(0, 1))
+        res_X_test, res_Y_test = deform_grid_c([X, Y], displacement, axis=[(1, 2), (0, 1)])
+        np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
+        np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+
+        # test multiple inputs, with cropping
+        X = np.random.rand(3, 90, 80, 7)
+        Y = np.random.rand(7, 90, 80)
+        displacement = np.random.randn(2, 5, 3) * 25
+        for crop in [(slice(30, 50), slice(20, 40)), (slice(0, 30), slice(0, 80))]:
+            res_X_ref = deform_grid_py(X, displacement, axis=(1, 2), crop=crop)
+            res_Y_ref = deform_grid_py(Y, displacement, axis=(1, 2), crop=crop)
+            res_X_test, res_Y_test = deform_grid_c([X, Y], displacement, axis=(1, 2), crop=crop)
+            np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
+            np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+
+    def run_comparison(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
         # generate random displacement vector
-        displacement = np.random.randn(len(shape), *points) * sigma
+        displacement = np.random.randn(len(shape) if axis is None else len(axis), *points) * sigma
         # generate random data
         X = np.random.rand(*shape)
 
         # test and compare
-        res_ref = deform_grid_py(X, displacement, order=order, crop=crop, mode=mode)
-        res_test = deform_grid_c(X, displacement, order=order, crop=crop, mode=mode)
+        res_ref = deform_grid_py(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
+        res_test = deform_grid_c(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
 
         np.testing.assert_array_almost_equal(res_ref, res_test)
 

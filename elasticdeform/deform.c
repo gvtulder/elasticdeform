@@ -92,6 +92,36 @@ map_coordinate(double in, npy_intp len, int mode)
     return in;
 }
 
+/* Initialize iterations over single array elements, but only over axes
+ * listed in axis. */
+int NI_InitSteppingPointIterator(PyArrayObject *array, NI_Iterator *iterator,
+                                 int naxis, int *axis)
+{
+    int ii, jj, nn = 0;
+
+    for(ii = 0; ii < PyArray_NDIM(array); ii++) {
+        for(jj = 0; jj < naxis; jj++) {
+            if (axis[jj] == ii)
+                break;
+        }
+        if (jj < naxis) {
+            /* axis found in axis */
+            /* adapt dimensions for use in the macros: */
+            iterator->dimensions[nn] = PyArray_DIM(array, ii) - 1;
+            /* initialize coordinates: */
+            iterator->coordinates[nn] = 0;
+            /* initialize strides: */
+            iterator->strides[nn] = PyArray_STRIDE(array, ii);
+            /* calculate the strides to move back at the end of an axis: */
+            iterator->backstrides[nn] =
+                    PyArray_STRIDE(array, ii) * iterator->dimensions[nn];
+            nn++;
+        }
+    }
+    iterator->rank_m1 = naxis - 1;
+    return 1;
+}
+
 int
 get_spline_interpolation_weights(double x, int order, double *weights)
 {
@@ -242,14 +272,14 @@ case NPY_##_TYPE:                                    \
 
 int DeformGrid(int ninputs,
                PyArrayObject** inputs, PyArrayObject* displacement, PyArrayObject* output_offset,
-               PyArrayObject** outputs, int* orders, int* modes, double* cvals)
+               PyArrayObject** outputs, int naxis, int *axis, int* orders, int* modes, double* cvals)
 {
     char **pos = NULL, **pis = NULL, *pd = NULL;
     npy_intp **edge_offsets = NULL, **data_offsets = NULL, *filter_sizes = NULL, dfilter_size;
     npy_intp **dedge_offsets = NULL, **ddata_offsets = NULL;
     npy_intp ftmp[NPY_MAXDIMS], *fcoordinates = NULL, *foffsets = NULL;
     npy_intp dftmp[NPY_MAXDIMS], *dfcoordinates = NULL, *dfoffsets = NULL;
-    npy_intp kk, hh, ll, jj, ii;
+    npy_intp kk, hh, ll, jj, ii, ss;
     npy_intp size, max_filter_size = 0;
     double **splvals = NULL, **dsplvals = NULL;
     npy_intp idimensions[NPY_MAXDIMS];
@@ -258,9 +288,10 @@ int DeformGrid(int ninputs,
     npy_intp ddimensions[NPY_MAXDIMS], dstrides[NPY_MAXDIMS];
     npy_intp ooffsets[NPY_MAXDIMS];
     npy_intp ncontrolpoints[NPY_MAXDIMS];
+    npy_intp *isteprank = NULL, *istepsize = NULL, *isteps = NULL, *istepstrides = NULL;
+    npy_intp *osteps = NULL, *ostepstrides = NULL;
     double displ[NPY_MAXDIMS];
     NI_Iterator *ios = NULL;
-    int irank = 0;
 
     /* spline order for deplacement */
     int dorder = 3;
@@ -269,58 +300,92 @@ int DeformGrid(int ninputs,
 
     NPY_BEGIN_THREADS;
 
-    for(kk = 0; kk < PyArray_NDIM(inputs[0]); kk++) {
-        idimensions[kk] = PyArray_DIM(inputs[0], kk);
-        odimensions[kk] = PyArray_DIM(outputs[0], kk);
+    size = 1;
+    for(kk = 0; kk < naxis; kk++) {
+        idimensions[kk] = PyArray_DIM(inputs[0], axis[kk]);
+        odimensions[kk] = PyArray_DIM(outputs[0], axis[kk]);
+        size *= odimensions[kk];
     }
-    irank = PyArray_NDIM(inputs[0]);
 
     for (kk = 0; kk < PyArray_NDIM(displacement); kk++) {
         ddimensions[kk] = PyArray_DIM(displacement, kk);
         dstrides[kk] = PyArray_STRIDE(displacement, kk);
     }
 
-    istrides = malloc(ninputs * irank * sizeof(npy_intp));
+    istrides = malloc(ninputs * naxis * sizeof(npy_intp));
     if (NPY_UNLIKELY(!istrides)) {
         NPY_END_THREADS;
         PyErr_NoMemory();
         goto exit;
     }
     for (ii = 0; ii < ninputs; ii++) {
-        for(kk = 0; kk < irank; kk++) {
-            istrides[ii * irank + kk] = PyArray_STRIDE(inputs[ii], kk);
+        for(kk = 0; kk < naxis; kk++) {
+            istrides[ii * naxis + kk] = PyArray_STRIDE(inputs[ii], axis[ii * naxis + kk]);
         }
     }
 
+    /* compute number of steps and stride per step for the non-deformable axes */
+    isteprank = malloc(ninputs * sizeof(npy_intp));
+    istepsize = malloc(ninputs * sizeof(npy_intp));
+    isteps = malloc(ninputs * NPY_MAXDIMS * sizeof(npy_intp));
+    istepstrides = malloc(ninputs * NPY_MAXDIMS * sizeof(npy_intp));
+    osteps = malloc(ninputs * NPY_MAXDIMS * sizeof(npy_intp));
+    ostepstrides = malloc(ninputs * NPY_MAXDIMS * sizeof(npy_intp));
+    if (NPY_UNLIKELY(!istepsize || !isteps || !istepstrides || !osteps || !ostepstrides)) {
+        NPY_END_THREADS;
+        PyErr_NoMemory();
+        goto exit;
+    }
+    for(ii = 0; ii < ninputs; ii++) {
+        istepsize[ii] = 1;
+        ll = 0;
+        for(kk = 0; kk < PyArray_NDIM(inputs[ii]); kk++) {
+            for(jj = 0; jj < naxis; jj++) {
+                if (axis[ii * naxis + jj] == kk)
+                    break;
+            }
+            if (jj == naxis) {
+                /* axis not found, to be skipped */
+                istepsize[ii] *= PyArray_DIM(inputs[ii], kk);
+                isteps[ii + ll * ninputs] = PyArray_DIM(inputs[ii], kk);
+                osteps[ii + ll * ninputs] = PyArray_DIM(outputs[ii], kk);
+                istepstrides[ii + ll * ninputs] = PyArray_STRIDE(inputs[ii], kk);
+                ostepstrides[ii + ll * ninputs] = PyArray_STRIDE(outputs[ii], kk);
+                ll++;
+            }
+        }
+        isteprank[ii] = ll;
+    }
+
     /* check if the output is cropped */
-    for(kk = 0; kk < irank; kk++) {
+    for(kk = 0; kk < naxis; kk++) {
         ooffsets[kk] = 0;
     }
     if (output_offset) {
-        for(kk = 0; kk < irank; kk++) {
+        for(kk = 0; kk < naxis; kk++) {
             ooffsets[kk] = *(npy_intp *)(PyArray_GETPTR1(output_offset, kk));
         }
     }
 
     /* number of control points in each dimension */
-    for (kk = 0; kk < irank; kk++) {
+    for (kk = 0; kk < naxis; kk++) {
         ncontrolpoints[kk] = PyArray_DIM(displacement, kk + 1);
     }
 
     /* offsets used at the borders: */
-    edge_offsets = malloc(ninputs * irank * sizeof(npy_intp*));
-    data_offsets = malloc(ninputs * irank * sizeof(npy_intp*));
+    edge_offsets = malloc(ninputs * naxis * sizeof(npy_intp*));
+    data_offsets = malloc(ninputs * naxis * sizeof(npy_intp*));
     if (NPY_UNLIKELY(!edge_offsets || !data_offsets)) {
         NPY_END_THREADS;
         PyErr_NoMemory();
         goto exit;
     }
-    for(jj = 0; jj < ninputs * irank; jj++)
+    for(jj = 0; jj < ninputs * naxis; jj++)
         data_offsets[jj] = NULL;
     for(ii = 0; ii < ninputs; ii++) {
-        for(jj = 0; jj < irank; jj++) {
-            data_offsets[ii * irank + jj] = malloc((orders[ii] + 1) * sizeof(npy_intp));
-            if (NPY_UNLIKELY(!data_offsets[ii * irank + jj])) {
+        for(jj = 0; jj < naxis; jj++) {
+            data_offsets[ii * naxis + jj] = malloc((orders[ii] + 1) * sizeof(npy_intp));
+            if (NPY_UNLIKELY(!data_offsets[ii * naxis + jj])) {
                 NPY_END_THREADS;
                 PyErr_NoMemory();
                 goto exit;
@@ -329,16 +394,16 @@ int DeformGrid(int ninputs,
     }
 
     /* offsets in desplacement used at the borders: */
-    dedge_offsets = malloc(irank * sizeof(npy_intp*));
-    ddata_offsets = malloc(irank * sizeof(npy_intp*));
+    dedge_offsets = malloc(naxis * sizeof(npy_intp*));
+    ddata_offsets = malloc(naxis * sizeof(npy_intp*));
     if (NPY_UNLIKELY(!dedge_offsets || !ddata_offsets)) {
         NPY_END_THREADS;
         PyErr_NoMemory();
         goto exit;
     }
-    for(jj = 0; jj < irank; jj++)
+    for(jj = 0; jj < naxis; jj++)
         ddata_offsets[jj] = NULL;
-    for(jj = 0; jj < irank; jj++) {
+    for(jj = 0; jj < naxis; jj++) {
         ddata_offsets[jj] = malloc((dorder + 1) * sizeof(npy_intp));
         if (NPY_UNLIKELY(!ddata_offsets[jj])) {
             NPY_END_THREADS;
@@ -348,19 +413,19 @@ int DeformGrid(int ninputs,
     }
 
     npy_int perimeter = 0;
-    for(jj = 0; jj < irank; jj++) {
+    for(jj = 0; jj < naxis; jj++) {
         perimeter += odimensions[jj];
     }
     /* will hold the deplacement spline coefficients: */
-    dsplvals = malloc(irank * perimeter * sizeof(double*));
+    dsplvals = malloc(naxis * perimeter * sizeof(double*));
     if (NPY_UNLIKELY(!dsplvals)) {
         NPY_END_THREADS;
         PyErr_NoMemory();
         goto exit;
     }
-    for(jj = 0; jj < irank * perimeter; jj++)
+    for(jj = 0; jj < naxis * perimeter; jj++)
         dsplvals[jj] = NULL;
-    for(jj = 0; jj < irank * perimeter; jj++) {
+    for(jj = 0; jj < naxis * perimeter; jj++) {
         dsplvals[jj] = malloc((dorder + 1) * sizeof(double));
         if (NPY_UNLIKELY(!dsplvals[jj])) {
             NPY_END_THREADS;
@@ -370,18 +435,18 @@ int DeformGrid(int ninputs,
     }
 
     /* will hold the spline coefficients: */
-    splvals = malloc(ninputs * irank * sizeof(double*));
+    splvals = malloc(ninputs * naxis * sizeof(double*));
     if (NPY_UNLIKELY(!splvals)) {
         NPY_END_THREADS;
         PyErr_NoMemory();
         goto exit;
     }
-    for(jj = 0; jj < ninputs * irank; jj++)
+    for(jj = 0; jj < ninputs * naxis; jj++)
         splvals[jj] = NULL;
     for(ii = 0; ii < ninputs; ii++) {
-        for(jj = 0; jj < irank; jj++) {
-            splvals[ii * irank + jj] = malloc((orders[ii] + 1) * sizeof(double));
-            if (NPY_UNLIKELY(!splvals[ii * irank + jj])) {
+        for(jj = 0; jj < naxis; jj++) {
+            splvals[ii * naxis + jj] = malloc((orders[ii] + 1) * sizeof(double));
+            if (NPY_UNLIKELY(!splvals[ii * naxis + jj])) {
                 NPY_END_THREADS;
                 PyErr_NoMemory();
                 goto exit;
@@ -399,14 +464,14 @@ int DeformGrid(int ninputs,
     }
     for(ii = 0; ii < ninputs; ii++) {
         filter_sizes[ii] = 1;
-        for(jj = 0; jj < irank; jj++)
+        for(jj = 0; jj < naxis; jj++)
             filter_sizes[ii] *= orders[ii] + 1;
         if (filter_sizes[ii] > max_filter_size)
             max_filter_size = filter_sizes[ii];
     }
 
     dfilter_size = 1;
-    for(jj = 0; jj < irank; jj++)
+    for(jj = 0; jj < naxis; jj++)
         dfilter_size *= dorder + 1;
 
     /* initialize output iterator: */
@@ -417,7 +482,7 @@ int DeformGrid(int ninputs,
         goto exit;
     }
     for (ii = 0; ii < ninputs; ii++) {
-        if (!NI_InitPointIterator(outputs[ii], &ios[ii]))
+        if (!NI_InitSteppingPointIterator(outputs[ii], &ios[ii], naxis, &axis[ii * naxis]))
             goto exit;
     }
 
@@ -436,7 +501,7 @@ int DeformGrid(int ninputs,
     pd = (void *)PyArray_DATA(displacement);
 
     /* make a table of all possible coordinates within the spline filter: */
-    fcoordinates = malloc(ninputs * irank * max_filter_size * sizeof(npy_intp));
+    fcoordinates = malloc(ninputs * naxis * max_filter_size * sizeof(npy_intp));
     /* make a table of all offsets within the spline filter: */
     foffsets = malloc(ninputs * max_filter_size * sizeof(npy_intp));
     if (NPY_UNLIKELY(!fcoordinates || !foffsets)) {
@@ -445,28 +510,28 @@ int DeformGrid(int ninputs,
         goto exit;
     }
     for(ii = 0; ii < ninputs; ii++) {
-        for(jj = 0; jj < irank; jj++)
+        for(jj = 0; jj < naxis; jj++)
             ftmp[jj] = 0;
         kk = 0;
         for(hh = 0; hh < filter_sizes[ii]; hh++) {
-            for(jj = 0; jj < irank; jj++)
-                fcoordinates[jj + hh * irank + ii * irank * max_filter_size] = ftmp[jj];
+            for(jj = 0; jj < naxis; jj++)
+                fcoordinates[jj + hh * naxis + ii * naxis * max_filter_size] = ftmp[jj];
             foffsets[hh + ii * max_filter_size] = kk;
-            for(jj = irank - 1; jj >= 0; jj--) {
+            for(jj = naxis - 1; jj >= 0; jj--) {
                 if (ftmp[jj] < orders[ii]) {
                     ftmp[jj]++;
-                    kk += istrides[ii * irank + jj];
+                    kk += istrides[ii * naxis + jj];
                     break;
                 } else {
                     ftmp[jj] = 0;
-                    kk -= istrides[ii * irank + jj] * orders[ii];
+                    kk -= istrides[ii * naxis + jj] * orders[ii];
                 }
             }
         }
     }
 
     /* make a table of all possible coordinates within the spline filter: */
-    dfcoordinates = malloc(irank * dfilter_size * sizeof(npy_intp));
+    dfcoordinates = malloc(naxis * dfilter_size * sizeof(npy_intp));
     /* make a table of all offsets within the spline filter: */
     dfoffsets = malloc(dfilter_size * sizeof(npy_intp));
     if (NPY_UNLIKELY(!dfcoordinates || !dfoffsets)) {
@@ -474,14 +539,14 @@ int DeformGrid(int ninputs,
         PyErr_NoMemory();
         goto exit;
     }
-    for(jj = 0; jj < irank; jj++)
+    for(jj = 0; jj < naxis; jj++)
         dftmp[jj] = 0;
     kk = 0;
     for(hh = 0; hh < dfilter_size; hh++) {
-        for(jj = 0; jj < irank; jj++)
-            dfcoordinates[jj + hh * irank] = dftmp[jj];
+        for(jj = 0; jj < naxis; jj++)
+            dfcoordinates[jj + hh * naxis] = dftmp[jj];
         dfoffsets[hh] = kk;
-        for(jj = irank - 1; jj >= 0; jj--) {
+        for(jj = naxis - 1; jj >= 0; jj--) {
             if (dftmp[jj] < dorder) {
                 dftmp[jj]++;
                 kk += dstrides[jj + 1];
@@ -495,7 +560,7 @@ int DeformGrid(int ninputs,
 
     /* precompute control points and spline weights for displacement */
     kk = 0;
-    for(hh = 0; hh < irank; hh++) {
+    for(hh = 0; hh < naxis; hh++) {
         for(jj = 0; jj < odimensions[hh]; jj++) {
             double cp = (double)(ncontrolpoints[hh] - 1) * (double)(jj + ooffsets[hh]) / (double)(idimensions[hh] - 1);
             get_spline_interpolation_weights(cp, dorder, dsplvals[kk]);
@@ -503,12 +568,11 @@ int DeformGrid(int ninputs,
         }
     }
 
-    size = PyArray_SIZE(outputs[0]);
     for(kk = 0; kk < size; kk++) {
         /* compute deplacement on this dimension */
         int dedge = 0;
         npy_intp ddoffset = 0;
-        for(jj = 0; jj < irank; jj++) {
+        for(jj = 0; jj < naxis; jj++) {
             /* assumption: by definition, cp is inside the deplacement array */
             double cp = (double)(ncontrolpoints[jj] - 1) * (double)(ios[0].coordinates[jj] + ooffsets[jj]) / (double)(idimensions[jj] - 1);
             /* find the filter location along this axis: */
@@ -550,7 +614,7 @@ int DeformGrid(int ninputs,
         }
 
         /* iterate over axes: */
-        for(hh = 0; hh < irank; hh++) {
+        for(hh = 0; hh < naxis; hh++) {
             /* compute displacement */
             npy_intp *dff = dfcoordinates;
             const int type_num = PyArray_TYPE(displacement);
@@ -560,7 +624,7 @@ int DeformGrid(int ninputs,
                 npy_intp idx = 0;
 
                 if (NPY_UNLIKELY(dedge)) {
-                    for(ll = 0; ll < irank; ll++) {
+                    for(ll = 0; ll < naxis; ll++) {
                         if (dedge_offsets[ll])
                             idx += dedge_offsets[ll][dff[ll]];
                         else
@@ -606,13 +670,13 @@ int DeformGrid(int ninputs,
                 }
                 /* calculate the interpolated value: */
                 double **cur_dsplvals = dsplvals;
-                for(ll = 0; ll < irank; ll++) {
+                for(ll = 0; ll < naxis; ll++) {
                     if (dorder > 0)
                         coeff *= cur_dsplvals[ios[0].coordinates[ll]][dff[ll]];
                     cur_dsplvals += odimensions[ll];
                 }
                 displ[hh] += coeff;
-                dff += irank;
+                dff += naxis;
             }
         }
 
@@ -623,7 +687,7 @@ int DeformGrid(int ninputs,
             npy_intp offset = 0;
 
             /* iterate over axes: */
-            for(hh = 0; hh < irank; hh++) {
+            for(hh = 0; hh < naxis; hh++) {
                 /* compute the coordinate: coordinate of output voxel io.coordinates[hh] + displacement displ[hh] */
                 /* if the input coordinate is outside the borders, map it: */
                 double cc = map_coordinate(ios[ii].coordinates[hh] + ooffsets[hh] + displ[hh], idimensions[hh], modes[ii]);
@@ -636,11 +700,11 @@ int DeformGrid(int ninputs,
                         start = (npy_intp)floor(cc + 0.5) - orders[ii] / 2;
                     }
                     /* get the offset to the start of the filter: */
-                    offset += istrides[ii * irank + hh] * start;
+                    offset += istrides[ii * naxis + hh] * start;
                     if (start < 0 || start + orders[ii] >= idimensions[hh]) {
                         /* implement border mapping, if outside border: */
                         edge = 1;
-                        edge_offsets[ii * irank + hh] = data_offsets[ii * irank + hh];
+                        edge_offsets[ii * naxis + hh] = data_offsets[ii * naxis + hh];
                         for(ll = 0; ll <= orders[ii]; ll++) {
                             npy_intp idx = start + ll;
                             npy_intp len = idimensions[hh];
@@ -658,13 +722,13 @@ int DeformGrid(int ninputs,
                                 }
                             }
                             /* calculate and store the offests at this edge: */
-                            edge_offsets[ii * irank + hh][ll] = istrides[ii * irank + hh] * (idx - start);
+                            edge_offsets[ii * naxis + hh][ll] = istrides[ii * naxis + hh] * (idx - start);
                         }
                     } else {
                         /* we are not at the border, use precalculated offsets: */
-                        edge_offsets[ii * irank + hh] = NULL;
+                        edge_offsets[ii * naxis + hh] = NULL;
                     }
-                    get_spline_interpolation_weights(cc, orders[ii], splvals[ii * irank + hh]);
+                    get_spline_interpolation_weights(cc, orders[ii], splvals[ii * naxis + hh]);
                 } else {
                     /* we use the constant border condition: */
                     constant = 1;
@@ -673,88 +737,100 @@ int DeformGrid(int ninputs,
             }
 
             /* interpolate value for this input */
-            double t = 0.0;
-            if (!constant) {
-                npy_intp *ff = fcoordinates + (ii * irank * max_filter_size);
-                const int type_num = PyArray_TYPE(inputs[ii]);
-                t = 0.0;
-                for(hh = 0; hh < filter_sizes[ii]; hh++) {
-                    double coeff = 0.0;
-                    npy_intp idx = 0;
-
-                    if (NPY_UNLIKELY(edge)) {
-                        for(ll = 0; ll < irank; ll++) {
-                            if (edge_offsets[ii * irank + ll])
-                                idx += edge_offsets[ii * irank + ll][ff[ll]];
-                            else
-                                idx += ff[ll] * istrides[ii * irank + ll];
-                        }
-                    } else {
-                        idx = foffsets[hh + ii * max_filter_size];
-                    }
-                    idx += offset;
-                    switch (type_num) {
-                        CASE_INTERP_COEFF(NPY_BOOL, npy_bool,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_UBYTE, npy_ubyte,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_USHORT, npy_ushort,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_UINT, npy_uint,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_ULONG, npy_ulong,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_ULONGLONG, npy_ulonglong,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_BYTE, npy_byte,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_SHORT, npy_short,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_INT, npy_int,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_LONG, npy_long,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_LONGLONG, npy_longlong,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_FLOAT, npy_float,
-                                          coeff, pis[ii], idx);
-                        CASE_INTERP_COEFF(NPY_DOUBLE, npy_double,
-                                          coeff, pis[ii], idx);
-                    default:
-                        NPY_END_THREADS;
-                        PyErr_SetString(PyExc_RuntimeError,
-                                        "data type not supported");
-                        goto exit;
-                    }
-                    /* calculate the interpolated value: */
-                    for(ll = 0; ll < irank; ll++)
-                        if (orders[ii] > 0)
-                            coeff *= splvals[ii * irank + ll][ff[ll]];
-                    t += coeff;
-                    ff += irank;
+            /* iterate over all steps (the non-deformed axes */
+            for(ss = 0; ss < istepsize[ii]; ss++) {
+                npy_intp istepoffset = 0;
+                npy_intp ostepoffset = 0;
+                int sli = ss, slo = ss;
+                for(hh = 0; hh < isteprank[ii]; hh++) {
+                    istepoffset += istepstrides[ii + hh * ninputs] * (sli % isteps[ii + hh * ninputs]);
+                    sli = sli / isteps[ii + hh * ninputs];
+                    ostepoffset += ostepstrides[ii + hh * ninputs] * (slo % osteps[ii + hh * ninputs]);
+                    slo = slo / osteps[ii + hh * ninputs];
                 }
-            } else {
-                t = cvals[ii];
-            }
-            /* store output value: */
-            switch (PyArray_TYPE(outputs[ii])) {
-                CASE_INTERP_OUT(NPY_BOOL, npy_bool, pos[ii], t);
-                CASE_INTERP_OUT_UINT(UBYTE, npy_ubyte, pos[ii], t);
-                CASE_INTERP_OUT_UINT(USHORT, npy_ushort, pos[ii], t);
-                CASE_INTERP_OUT_UINT(UINT, npy_uint, pos[ii], t);
-                CASE_INTERP_OUT_UINT(ULONG, npy_ulong, pos[ii], t);
-                CASE_INTERP_OUT_UINT(ULONGLONG, npy_ulonglong, pos[ii], t);
-                CASE_INTERP_OUT_INT(BYTE, npy_byte, pos[ii], t);
-                CASE_INTERP_OUT_INT(SHORT, npy_short, pos[ii], t);
-                CASE_INTERP_OUT_INT(INT, npy_int, pos[ii], t);
-                CASE_INTERP_OUT_INT(LONG, npy_long, pos[ii], t);
-                CASE_INTERP_OUT_INT(LONGLONG, npy_longlong, pos[ii], t);
-                CASE_INTERP_OUT(NPY_FLOAT, npy_float, pos[ii], t);
-                CASE_INTERP_OUT(NPY_DOUBLE, npy_double, pos[ii], t);
-            default:
-                NPY_END_THREADS;
-                PyErr_SetString(PyExc_RuntimeError, "data type not supported");
-                goto exit;
+                double t = 0.0;
+                if (!constant) {
+                    npy_intp *ff = fcoordinates + (ii * naxis * max_filter_size);
+                    const int type_num = PyArray_TYPE(inputs[ii]);
+                    t = 0.0;
+                    for(hh = 0; hh < filter_sizes[ii]; hh++) {
+                        double coeff = 0.0;
+                        npy_intp idx = 0;
+
+                        if (NPY_UNLIKELY(edge)) {
+                            for(ll = 0; ll < naxis; ll++) {
+                                if (edge_offsets[ii * naxis + ll])
+                                    idx += edge_offsets[ii * naxis + ll][ff[ll]];
+                                else
+                                    idx += ff[ll] * istrides[ii * naxis + ll];
+                            }
+                        } else {
+                            idx = foffsets[hh + ii * max_filter_size];
+                        }
+                        idx += offset + istepoffset;
+                        switch (type_num) {
+                            CASE_INTERP_COEFF(NPY_BOOL, npy_bool,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_UBYTE, npy_ubyte,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_USHORT, npy_ushort,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_UINT, npy_uint,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_ULONG, npy_ulong,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_ULONGLONG, npy_ulonglong,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_BYTE, npy_byte,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_SHORT, npy_short,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_INT, npy_int,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_LONG, npy_long,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_LONGLONG, npy_longlong,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_FLOAT, npy_float,
+                                              coeff, pis[ii], idx);
+                            CASE_INTERP_COEFF(NPY_DOUBLE, npy_double,
+                                              coeff, pis[ii], idx);
+                        default:
+                            NPY_END_THREADS;
+                            PyErr_SetString(PyExc_RuntimeError,
+                                            "data type not supported");
+                            goto exit;
+                        }
+                        /* calculate the interpolated value: */
+                        for(ll = 0; ll < naxis; ll++)
+                            if (orders[ii] > 0)
+                                coeff *= splvals[ii * naxis + ll][ff[ll]];
+                        t += coeff;
+                        ff += naxis;
+                    }
+                } else {
+                    t = cvals[ii];
+                }
+                /* store output value: */
+                switch (PyArray_TYPE(outputs[ii])) {
+                    CASE_INTERP_OUT(NPY_BOOL, npy_bool, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_UINT(UBYTE, npy_ubyte, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_UINT(USHORT, npy_ushort, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_UINT(UINT, npy_uint, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_UINT(ULONG, npy_ulong, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_UINT(ULONGLONG, npy_ulonglong, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_INT(BYTE, npy_byte, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_INT(SHORT, npy_short, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_INT(INT, npy_int, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_INT(LONG, npy_long, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT_INT(LONGLONG, npy_longlong, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT(NPY_FLOAT, npy_float, (pos[ii] + ostepoffset), t);
+                    CASE_INTERP_OUT(NPY_DOUBLE, npy_double, (pos[ii] + ostepoffset), t);
+                default:
+                    NPY_END_THREADS;
+                    PyErr_SetString(PyExc_RuntimeError, "data type not supported");
+                    goto exit;
+                }
             }
             NI_ITERATOR_NEXT(ios[ii], pos[ii]);
         }
@@ -766,22 +842,22 @@ int DeformGrid(int ninputs,
     free(edge_offsets);
     free(dedge_offsets);
     if (data_offsets) {
-        for(jj = 0; jj < ninputs * irank; jj++)
+        for(jj = 0; jj < ninputs * naxis; jj++)
             free(data_offsets[jj]);
         free(data_offsets);
     }
     if (ddata_offsets) {
-        for(jj = 0; jj < irank; jj++)
+        for(jj = 0; jj < naxis; jj++)
             free(ddata_offsets[jj]);
         free(ddata_offsets);
     }
     if (dsplvals) {
-        for(jj = 0; jj < irank * perimeter; jj++)
+        for(jj = 0; jj < naxis * perimeter; jj++)
             free(dsplvals[jj]);
         free(dsplvals);
     }
     if (splvals) {
-        for(jj = 0; jj < ninputs * irank; jj++)
+        for(jj = 0; jj < ninputs * naxis; jj++)
             free(splvals[jj]);
         free(splvals);
     }
@@ -790,6 +866,12 @@ int DeformGrid(int ninputs,
     free(fcoordinates);
     free(dfoffsets);
     free(dfcoordinates);
+    free(isteprank);
+    free(istepsize);
+    free(isteps);
+    free(istepstrides);
+    free(osteps);
+    free(ostepstrides);
     free(pos);
     free(pis);
     free(ios);

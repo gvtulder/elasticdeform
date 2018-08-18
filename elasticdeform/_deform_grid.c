@@ -63,19 +63,20 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
     PyObject *inputList = NULL, *outputList = NULL;
     PyArrayObject **inputs = NULL, **outputs = NULL;
     PyArrayObject *displacement = NULL, *outputOffset = NULL;
-    PyArrayObject *outputOffsetIn = NULL;
+    PyArrayObject *outputOffsetIn = NULL, *axisListIn = NULL;
     PyArrayObject *ordersIn = NULL, *modesIn = NULL, *cvalsIn = NULL;
-    PyArrayObject *orders = NULL, *modes = NULL, *cvals = NULL;
-    int *order = NULL, *mode = NULL;
+    PyArrayObject *axisList = NULL, *orders = NULL, *modes = NULL, *cvals = NULL;
+    int *order = NULL, *mode = NULL, *axis = NULL;
     double *cval = NULL;
-    int i;
-    Py_ssize_t ninputs = 0;
+    int i, j;
+    Py_ssize_t ninputs = 0, naxis = 0;
 
-    if (!PyArg_ParseTuple(args, "O!O&O&O!O&O&O&",
+    if (!PyArg_ParseTuple(args, "O!O&O&O!O&O&O&O&",
                           &PyList_Type, &inputList,
                           NI_ObjectToInputArray, &displacement,
                           NI_ObjectToOptionalInputArray, &outputOffsetIn,
                           &PyList_Type, &outputList,
+                          NI_ObjectToInputArray, &axisListIn,
                           NI_ObjectToInputArray, &ordersIn,
                           NI_ObjectToInputArray, &modesIn,
                           NI_ObjectToInputArray, &cvalsIn))
@@ -98,19 +99,49 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
             goto exit;
         if (!NI_ObjectToOutputArray(PyList_GetItem(outputList, i), &outputs[i]))
             goto exit;
-        if (PyArray_SIZE(inputs[i]) != PyArray_SIZE(inputs[0])) {
-          PyErr_SetString(PyExc_RuntimeError, "all inputs should have the same size");
-          goto exit;
-        }
-        if (PyArray_SIZE(outputs[i]) != PyArray_SIZE(outputs[0])) {
-          PyErr_SetString(PyExc_RuntimeError, "all outputs should have the same size");
+        if (PyArray_NDIM(inputs[i]) != PyArray_NDIM(outputs[i])) {
+          PyErr_SetString(PyExc_RuntimeError, "input and output dimensions should match");
           goto exit;
         }
     }
 
+    /* check and collect axis lists */
+    axisList = (PyArrayObject*)PyArray_FromArray(axisListIn, PyArray_DescrFromType(NPY_INT64),
+                                                 NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED);
+    if (!axisList ||
+        (PyArray_NDIM(axisList) != 2) ||
+        (PyArray_DIM(axisList, 0) != ninputs)) {
+        PyErr_SetString(PyExc_RuntimeError, "invalid axis list");
+        goto exit;
+    }
+    naxis = PyArray_DIM(axisList, 1);
+    axis = malloc(ninputs * naxis * sizeof(int));
+    if (!axis) {
+        PyErr_NoMemory();
+        goto exit;
+    }
+    for(i = 0; i < ninputs; i++) {
+        for(j = 0; j < naxis; j++) {
+            axis[i * naxis + j] = (int)(*(npy_int64 *)PyArray_GETPTR2(axisList, i, j));
+            if ((axis[i * naxis + j] < 0) ||
+                (axis[i * naxis + j] >= PyArray_NDIM(inputs[i]))) {
+                PyErr_SetString(PyExc_RuntimeError, "invalid axis in axis list");
+                goto exit;
+            }
+            if (PyArray_DIM(inputs[i], axis[i * naxis + j]) != PyArray_DIM(inputs[0], axis[j])) {
+                PyErr_SetString(PyExc_RuntimeError, "all inputs should have the same size");
+                goto exit;
+            }
+            if (PyArray_DIM(outputs[i], axis[i * naxis + j]) != PyArray_DIM(outputs[0], axis[j])) {
+                PyErr_SetString(PyExc_RuntimeError, "all outputs should have the same size");
+                goto exit;
+            }
+        }
+    }
+
     /* check shape of displacement */
-    if ((PyArray_NDIM(displacement) != PyArray_NDIM(inputs[0]) + 1) ||
-        (PyArray_DIM(displacement, 0) != PyArray_NDIM(inputs[0])) ||
+    if ((PyArray_NDIM(displacement) != naxis + 1) ||
+        (PyArray_DIM(displacement, 0) != naxis) ||
         (PyArray_SIZE(displacement) == 0)) {
         PyErr_SetString(PyExc_RuntimeError, "invalid displacement shape");
         goto exit;
@@ -152,7 +183,7 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
 
     /* check and convert output offset, if given */
     if (outputOffsetIn) {
-        if (PyArray_SIZE(outputOffsetIn) != PyArray_NDIM(inputs[0])) {
+        if (PyArray_SIZE(outputOffsetIn) != naxis) {
             PyErr_SetString(PyExc_RuntimeError, "incorrect length for output offset");
             goto exit;
         }
@@ -165,7 +196,7 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
     }
 
     DeformGrid(ninputs, inputs, displacement, outputOffset,
-               outputs, order, mode, cval);
+               outputs, naxis, axis, order, mode, cval);
     #ifdef HAVE_WRITEBACKIFCOPY
         for(i = 0; i < ninputs; i++) {
             PyArray_ResolveWritebackIfCopy(outputs[i]);
@@ -176,9 +207,11 @@ exit:
     Py_XDECREF(displacement);
     Py_XDECREF(outputOffsetIn);
     Py_XDECREF(outputOffset);
+    Py_XDECREF(axisListIn);
     Py_XDECREF(ordersIn);
     Py_XDECREF(modesIn);
     Py_XDECREF(cvalsIn);
+    Py_XDECREF(axisList);
     Py_XDECREF(orders);
     Py_XDECREF(modes);
     Py_XDECREF(cvals);
@@ -190,6 +223,7 @@ exit:
     }
     free(inputs);
     free(outputs);
+    free(axis);
     free(order);
     free(mode);
     free(cval);

@@ -6,7 +6,7 @@ with open("README.md") as f:
     readme_txt = f.read()
 
 setup(name='elasticdeform',
-      version='0.3.0',
+      version='0.3.1',
       description='Elastic deformations for N-D images.',
       long_description_content_type='text/markdown',
       long_description=readme_txt,

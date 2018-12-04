@@ -22,6 +22,7 @@ setup(name='elasticdeform',
                              include_dirs=['elasticdeform'])],
       include_dirs=numpy.distutils.misc_util.get_numpy_include_dirs(),
       classifiers=[
+          "Programming Language :: Python :: 2",
           "Programming Language :: Python :: 3",
           "License :: OSI Approved :: BSD License",
       ],

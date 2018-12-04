@@ -235,6 +235,7 @@ static PyMethodDef module_methods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+#if PY_MAJOR_VERSION >= 3
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     "_deform_grid",
@@ -248,12 +249,20 @@ static struct PyModuleDef moduledef = {
 };
 
 PyObject *PyInit__deform_grid(void)
+#else
+void init_deform_grid(void)
+#endif
 {
-    PyObject *m;
+#if PY_MAJOR_VERSION >= 3
+    PyObject *m = PyModule_Create(&moduledef);
+#else
+    PyObject *m = Py_InitModule("_deform_grid", module_methods);
+#endif
 
-    m = PyModule_Create(&moduledef);
     import_array();
 
+#if PY_MAJOR_VERSION >= 3
     return m;
+#endif
 }
 

@@ -94,55 +94,13 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
     axis, deform_shape = _normalize_axis_list(axis, Xs)
 
     # prepare output cropping
-    if crop is not None:
-        assert isinstance(crop, (tuple, list)), "crop must be a tuple or a list."
-        assert len(crop) == len(deform_shape)
-        output_shapes = [list(x.shape) for x in Xs]
-        output_offset = [0 for d in range(len(axis[0]))]
-        for d in range(len(axis[0])):
-            if isinstance(crop[d], slice):
-                assert crop[d].step is None
-                start = (crop[d].start or 0)
-                stop = (crop[d].stop or deform_shape[d])
-                assert start >= 0
-                assert start < stop and stop <= deform_shape[d]
-                for i in range(len(Xs)):
-                    output_shapes[i][axis[i][d]] = stop - start
-                if start > 0:
-                    output_offset[d] = start
-            else:
-                raise Exception('Crop must be a slice.')
-        if any(o > 0 for o in output_offset):
-            output_offset = numpy.array(output_offset).astype('int64')
-        else:
-            output_offset = None
-    else:
-        output_shapes = [x.shape for x in Xs]
-        output_offset = None
+    output_shapes, output_offset = _compute_output_shapes(Xs, axis, deform_shape, crop)
 
-    # check displacement
-    assert isinstance(displacement, numpy.ndarray), 'Displacement matrix should be a numpy.ndarray.'
-    assert displacement.ndim == len(axis[0]) + 1, 'Number of dimensions of displacement does not match input.'
-    assert displacement.shape[0] == len(axis[0]), 'First dimension of displacement should match number of input dimensions.'
-    # prepare order
-    if not isinstance(order, (tuple, list)):
-        order = [order] * len(Xs)
-    assert len(Xs) == len(order), 'Number of order parameters should be equal to number of inputs.'
-    assert all(0 <= o and o <= 5 for o in order), 'order should be 0, 1, 2, 3, 4 or 5.'
-    order = numpy.array(order).astype('int64')
-
-    # prepare mode
-    if not isinstance(mode, (tuple, list)):
-        mode = [mode] * len(Xs)
-    mode = [_extend_mode_to_code(o) for o in mode]
-    assert len(Xs) == len(mode), 'Number of mode parameters should be equal to number of inputs.'
-    mode = numpy.array(mode).astype('int64')
-
-    # prepare cval
-    if not isinstance(cval, (tuple, list)):
-        cval = [cval] * len(Xs)
-    assert len(Xs) == len(cval), 'Number of cval parameters should be equal to number of inputs.'
-    cval = numpy.array(cval).astype('float64')
+    # prepare other parameters
+    displacement = _normalize_displacement(displacement, Xs, axis)
+    order = _normalize_order(order, Xs)
+    mode = _normalize_mode(mode, Xs)
+    cval = _normalize_cval(cval, Xs)
 
     # prefilter inputs
     Xs_f = []
@@ -204,6 +162,60 @@ def _normalize_axis_list(axis, Xs):
     assert len(set(input_shapes)) == 1, 'All inputs should have the same shape.'
     deform_shape = input_shapes[0]
     return axis, deform_shape
+
+def _compute_output_shapes(Xs, axis, deform_shape, crop):
+    if crop is not None:
+        assert isinstance(crop, (tuple, list)), "crop must be a tuple or a list."
+        assert len(crop) == len(deform_shape)
+        output_shapes = [list(x.shape) for x in Xs]
+        output_offset = [0 for d in range(len(axis[0]))]
+        for d in range(len(axis[0])):
+            if isinstance(crop[d], slice):
+                assert crop[d].step is None
+                start = (crop[d].start or 0)
+                stop = (crop[d].stop or deform_shape[d])
+                assert start >= 0
+                assert start < stop and stop <= deform_shape[d]
+                for i in range(len(Xs)):
+                    output_shapes[i][axis[i][d]] = stop - start
+                if start > 0:
+                    output_offset[d] = start
+            else:
+                raise Exception('Crop must be a slice.')
+        if any(o > 0 for o in output_offset):
+            output_offset = numpy.array(output_offset).astype('int64')
+        else:
+            output_offset = None
+    else:
+        output_shapes = [x.shape for x in Xs]
+        output_offset = None
+    return output_shapes, output_offset
+
+def _normalize_displacement(displacement, Xs, axis):
+    assert isinstance(displacement, numpy.ndarray), 'Displacement matrix should be a numpy.ndarray.'
+    assert displacement.ndim == len(axis[0]) + 1, 'Number of dimensions of displacement does not match input.'
+    assert displacement.shape[0] == len(axis[0]), 'First dimension of displacement should match number of input dimensions.'
+    return displacement
+
+def _normalize_order(order, Xs):
+    if not isinstance(order, (tuple, list)):
+        order = [order] * len(Xs)
+    assert len(Xs) == len(order), 'Number of order parameters should be equal to number of inputs.'
+    assert all(0 <= o and o <= 5 for o in order), 'order should be 0, 1, 2, 3, 4 or 5.'
+    return numpy.array(order).astype('int64')
+
+def _normalize_mode(mode, Xs):
+    if not isinstance(mode, (tuple, list)):
+        mode = [mode] * len(Xs)
+    mode = [_extend_mode_to_code(o) for o in mode]
+    assert len(Xs) == len(mode), 'Number of mode parameters should be equal to number of inputs.'
+    return numpy.array(mode).astype('int64')
+
+def _normalize_cval(cval, Xs):
+    if not isinstance(cval, (tuple, list)):
+        cval = [cval] * len(Xs)
+    assert len(Xs) == len(cval), 'Number of cval parameters should be equal to number of inputs.'
+    return numpy.array(cval).astype('float64')
 
 def _extend_mode_to_code(mode):
     """Convert an extension mode to the corresponding integer code.

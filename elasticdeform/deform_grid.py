@@ -81,7 +81,7 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
     The elastic deformation approach is found in
         Ronneberger, Fischer, and Brox, "U-Net: Convolutional Networks for Biomedical
         Image Segmentation"  https://arxiv.org/abs/1505.04597
-        Çiçek et al., "3D U-Net: Learning Dense Volumetric
+        Cicek et al., "3D U-Net: Learning Dense Volumetric
         Segmentation from Sparse Annotation"  https://arxiv.org/abs/1606.06650
 
     The procedure generates a coarse displacement grid with a random displacement

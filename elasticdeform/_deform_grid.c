@@ -267,7 +267,7 @@ void init_deform_grid(void)
 #if PY_MAJOR_VERSION >= 3
     PyObject *m = PyModule_Create(&moduledef);
 #else
-    PyObject *m = Py_InitModule("_deform_grid", module_methods);
+    Py_InitModule("_deform_grid", module_methods);
 #endif
 
     import_array();

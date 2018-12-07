@@ -1,9 +1,19 @@
+import os
 import numpy as np
 import scipy.ndimage
 import unittest
 import itertools
 
+try:
+    import tensorflow as tf
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+except Exception as e:
+    print(e)
+    tf = None
+
 import elasticdeform
+if tf is not None:
+    import elasticdeform.tf as etf
 
 # Python implementation
 def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
@@ -256,6 +266,45 @@ class TestDeformGrid(unittest.TestCase):
         res_test = deform_grid_c(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
 
         np.testing.assert_array_almost_equal(res_ref, res_test)
+
+    def test_basic_2d_tensorflow(self):
+        points = (3, 3)
+        shape = (100, 100)
+        for order in (0, 1, 2):
+            for crop in (None, (slice(20, 80), slice(30, 70))):
+                for mode in ('nearest', 'wrap', 'reflect', 'mirror', 'constant'):
+                    self.run_comparison_tensorflow(shape, points, order=order, mode=mode, crop=crop)
+
+    def run_comparison_tensorflow(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
+        if tf is None:
+            raise unittest.SkipTest("TensorFlow was not loaded.")
+
+        # generate random displacement vector
+        displacement = np.random.randn(len(shape) if axis is None else len(axis), *points) * sigma
+        # generate random data
+        X_val = np.random.rand(*shape)
+
+        # compute forward reference value
+        X_deformed_ref = elasticdeform.deform_grid(X_val, displacement, order=order, crop=crop, mode=mode, axis=axis)
+
+        # generate gradient
+        dY_val = np.random.rand(*X_deformed_ref.shape)
+
+        # compute backward reference value
+        dX_ref = elasticdeform.deform_grid_gradient(dY_val, displacement, order=order, crop=crop, mode=mode, axis=axis, X_shape=shape)
+
+        # build tensorflow graph
+        X = tf.Variable(X_val)
+        dY = tf.Variable(dY_val)
+        X_deformed = etf.deform_grid(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
+        [dX] = tf.gradients(X_deformed, X, dY)
+
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            X_deformed_val, dX_val = sess.run([X_deformed, dX])
+
+            np.testing.assert_almost_equal(X_deformed_ref, X_deformed_val)
+            np.testing.assert_almost_equal(dX_ref, dX_val)
 
 
 if __name__ == '__main__':

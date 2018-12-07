@@ -1,5 +1,5 @@
-Elastic deformations for N-dimensional images (Python, SciPy, NumPy)
-====================================================================
+Elastic deformations for N-dimensional images (Python, SciPy, NumPy, TensorFlow)
+================================================================================
 
 This library implements elastic grid-based deformations for N-dimensional images.
 
@@ -17,6 +17,7 @@ displacement vectors and a spline interpolation.
 In addition to the normal, forward deformation, this package also provides a
 function that can backpropagate the gradient through the deformation. This makes
 it possible to use the deformation as a layer in a convolutional neural network.
+For convenience, a TensorFlow wrapper is provided in `elasticdeform.tf`.
 
 
 Installation
@@ -128,6 +129,32 @@ Note: The gradient function will assume that the input has the same size as the
 output. If you used the `crop` parameter in the forward phase, it is necessary to
 provide the gradient function with the original, uncropped input shape in the
 `X_shape` parameter.
+
+
+### TensorFlow wrapper
+
+The `elasticdeform.tf` module provides a wrapper for `deform_grid` in TensorFlow.
+The function uses TensorFlow Tensors as input and output, but otherwise uses
+the same parameters.
+```python
+import numpy
+import elasticdeform.tf as etf
+
+displacement = numpy.random.randn(2, 3, 3) * 5
+X_val = numpy.random.rand(200, 300)
+dY_val = numpy.random.rand(200, 300)
+
+# construct TensorFlow input and top gradient
+X = tf.Variable(X_val)
+dY = tf.Variable(dY_val)
+
+# the deform_grid function is similar to the plain Python equivalent,
+# but it accepts and returns TensorFlow Tensors
+X_deformed = etf.deform_grid(X, displacement, order=3)
+
+# the gradient w.r.t. X can be computed in the normal TensorFlow manner
+[dX] = tf.gradients(X_deformed, X, dY)
+```
 
 
 License information

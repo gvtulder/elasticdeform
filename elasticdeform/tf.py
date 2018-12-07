@@ -5,22 +5,24 @@ def deform_grid(X, *args, **kwargs):
     """
     Elastic deformation with a deformation grid, wrapped in a TensorFlow Op.
 
+    This function wraps the ``elasticdeform.deform_grid`` function in a TensorFlow Op
+    with a custom gradient.
+
     Parameters
     ----------
-    X: image Tensor or list of image Tensors
-    displacement: displacement vectors for each control point
-
-    See the documentation for the elasticdeform.deform_grid Python function
-    for the other parameters.
+    X : Tensor or list of Tensors
+        input image or list of input images
+    displacement : numpy array
+        displacement vectors for each control point
 
     Returns
     -------
-    Returns the deformed image, or a list of deformed images.
+    Tensor
+       the deformed image, or a list of deformed images
 
-    Notes
-    -----
-    This function wraps the `elasticdeform.deform_grid` in a TensorFlow Op
-    with a custom gradient. The parameters are the same as for the Python function.
+    See Also
+    --------
+    elasticdeform.deform_grid : for the other parameters
     """
     @tensorflow.custom_gradient
     def f(*xs):

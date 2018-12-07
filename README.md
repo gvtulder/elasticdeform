@@ -160,16 +160,17 @@ X_deformed = etf.deform_grid(X, displacement, order=3)
 License information
 -------------------
 
-This library was written by Gijs van Tulder (https://vantulder.net/) at the
-Biomedical Imaging Group Rotterdam, Erasmus MC, Rotterdam, the Netherlands
-(https://www.bigr.nl/).
+This library was written by [Gijs van Tulder](https://vantulder.net/) at the
+[Biomedical Imaging Group Rotterdam](https://www.bigr.nl/),
+Erasmus MC, Rotterdam, the Netherlands
 
-It is inspired by a similar, Python-based implementation by Florian Calvet
-(https://github.com/fcalvet/image_tools). This C-based implementation gives
-the same results but is faster.
+It is inspired by a similar, Python-based implementation by
+[Florian Calvet](https://github.com/fcalvet/image_tools).
+This C-based implementation gives the same results, but is faster and has
+a gradient implementation.
 
 This C implementation includes a modified version of the `NI_GeometricTransform`
-from SciPy's ndimage library. (https://github.com/scipy/scipy/blob/28636fbc3f16d562eab7b823546276111f6da98a/scipy/ndimage/src/ni_interpolation.c#L242)
+from [SciPy's ndimage library](https://github.com/scipy/scipy/blob/28636fbc3f16d562eab7b823546276111f6da98a/scipy/ndimage/src/ni_interpolation.c#L242).
 
 This code is made available under the BSD license. See ``LICENSE.txt`` for details.
 

@@ -3,22 +3,28 @@ import scipy.ndimage
 
 from . import _deform_grid
 
-def deform_random_grid(X, sigma=25, points=3, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+def deform_random_grid(X, sigma=25, points=3, *args, **kwargs):
     """
     Elastic deformation with a random deformation grid
 
+    This generates a random, square deformation grid with displacements
+    sampled from from a normal distribution with standard deviation `sigma`.
+    The deformation is then applied to the image or list of images,
+
+    See ``deform_grid`` for a full description of the parameters.
+
     Parameters
     ----------
-    X: image, or list of images of the same size
-    sigma: standard deviation of the normal distribution
-    points: number of points of the deformation grid
+    X : numpy array or list of arrays
+        image, or list of images of the same size
+    sigma : float
+        standard deviation of the normal distribution
+    points : array
+        number of points of the deformation grid
 
-    This generates a random, square deformation grid with displacements
-    sampled from from a normal distribution with standard deviation sigma.
-    The deformation is then applied to the image or list of images,
-    similar to deform_grid.
-
-    See deform_grid for more details.
+    See Also
+    --------
+    deform_grid : for a full description of the parameters.
     """
     # prepare inputs and axis selection
     Xs = _normalize_inputs(X)
@@ -28,66 +34,75 @@ def deform_random_grid(X, sigma=25, points=3, order=3, mode='constant', cval=0.0
         points = [points] * len(deform_shape)
 
     displacement = numpy.random.randn(len(deform_shape), *points) * sigma
-    return deform_grid(X, displacement, order, mode, cval, crop, prefilter, axis)
+    return deform_grid(X, displacement, *args, **kwargs)
 
 
 def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
     """
     Elastic deformation with a deformation grid
 
+    The procedure generates a coarse displacement grid with a random displacement
+    for each grid point. This grid is then interpolated to compute a displacement for
+    each pixel in the input image. The input image is then deformed using the
+    displacement vectors and a spline interpolation.
+
     Parameters
     ----------
-    X: image, or list of images of the same size
-    displacement: displacement vectors for each control point
-    order: interpolation order
-    mode: border mode (nearest, wrap, reflect, mirror, constant)
-    cval: constant value to be used if mode == 'constant'
-    crop: None, or a list of slice() objects to crop the output
-    prefilter: bool, if True the input X will be pre-filtered with a spline filter
-    axis: None, int, a list of ints, or a list of lists of ints, the axes to deform over
+    X : numpy array or list of arrays
+        image, or list of images of the same size
 
-    displacement is a NumPy array with displacement vectors for each
-    control points. For example, to deform a 2D image with 3 x 5 control
-    points, provide a displacement matrix of shape 2 x 3 x 5.
+        If X is a list of images, the values for order, mode and cval can be lists
+        to specify a different value for every image in X.
+    displacement : numpy array
+        displacement vectors for each control point
 
-    If X is a list of images, the values for order, mode and cval can be lists
-    to specify a different value for every image in X.
+        displacement is a NumPy array with displacement vectors for each
+        control points. For example, to deform a 2D image with 3 x 5 control
+        points, provide a displacement matrix of shape 2 x 3 x 5.
+    order : {0, 1, 2, 3, 4}
+        interpolation order
+    mode : ({nearest, wrap, reflect, mirror, constant})
+        border mode
+    cval : float
+        constant value to be used if mode == 'constant'
+    crop : None or list
+        None, or a list of slice() objects to crop the output
 
-    crop can be a list of slice() objects to crop the output with.
-    Only very simple slicing is supported: the slice start and stop values must
-    be positive and should not be larger than the output. Note that this parameter
-    is dependent of the axis parameter: if an axis list is given, crop must only
-    contain slice() objects for the dimensions in axis.
+        crop can be a list of slice() objects to crop the output with.
+        Only very simple slicing is supported: the slice start and stop values must
+        be positive and should not be larger than the output. Note that this parameter
+        is dependent of the axis parameter: if an axis list is given, crop must only
+        contain slice() objects for the dimensions in axis.
+    prefilter : bool
+        if True the input X will be pre-filtered with a spline filter
+    axis : None, int, a list of ints, or a list of lists of ints
+        the axes to deform over
 
-    axis indicates the axes on which the deformation should be applied.
-    The default (None) is to apply a deformation to all dimensions of the input.
-    Giving a single axis (int) or a tuple of axes will apply the deformation only
-    to those axes. The shape of the displacement must match this number of axes.
-    If multiple inputs are given, axis should be None or a list of tuples with
-    the axes for each input.
+        axis indicates the axes on which the deformation should be applied.
+        The default (None) is to apply a deformation to all dimensions of the input.
+        Giving a single axis (int) or a tuple of axes will apply the deformation only
+        to those axes. The shape of the displacement must match this number of axes.
+        If multiple inputs are given, axis should be None or a list of tuples with
+        the axes for each input.
 
     Returns
     -------
-    Returns the deformed image, or a list of deformed images if a list
-    of inputs is given.
+    numpy array or list of arrays
+        The deformed image, or a list of deformed images if a list of inputs is given.
 
     Notes
     -----
     See the SciPy documentation for scipy.ndimage.interpolation.map_coordinates
     for more details on some of the parameters.
 
-    Based on a Python implementation by Florian Calvet.
-
     The elastic deformation approach is found in
-        Ronneberger, Fischer, and Brox, "U-Net: Convolutional Networks for Biomedical
-        Image Segmentation"  https://arxiv.org/abs/1505.04597
-        Cicek et al., "3D U-Net: Learning Dense Volumetric
-        Segmentation from Sparse Annotation"  https://arxiv.org/abs/1606.06650
 
-    The procedure generates a coarse displacement grid with a random displacement
-    for each grid point. This grid is then interpolated to compute a displacement for
-    each pixel in the input image. The input image is then deformed using the
-    displacement vectors and a spline interpolation.
+    * Ronneberger, Fischer, and Brox, "U-Net: Convolutional Networks for Biomedical
+      Image Segmentation"  https://arxiv.org/abs/1505.04597
+    * Cicek et al., "3D U-Net: Learning Dense Volumetric
+      Segmentation from Sparse Annotation"  https://arxiv.org/abs/1606.06650
+
+    Based on a Python implementation by Florian Calvet.
     """
     # prepare inputs and axis selection
     Xs = _normalize_inputs(X)
@@ -134,20 +149,6 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
     """
     Gradient for deform_grid.
 
-    Parameters
-    ----------
-    dY: the input gradient, or list of gradients of the same size
-    displacement: displacement vectors for each control point
-    order: interpolation order
-    mode: border mode (nearest, wrap, reflect, mirror, constant)
-    cval: constant value to be used if mode == 'constant'
-    crop: None, or a list of slice() objects to crop the output
-    prefilter: bool, if True the input X will be pre-filtered with a spline filter
-    axis: None, int, a list of ints, or a list of lists of ints, the axes to deform over
-    X_shape: tuple with the shape of the input, or a list of tuples
-
-    See the documentation for deform_grid.
-
     This method performs the backward operation that returns the gradient of deform_grid
     with respect to the input. This is similar to performing an inverse deformation on
     the gradient, but not exactly the same: this function gives an exact gradient that
@@ -157,9 +158,32 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
     necessary if the crop parameter is used. Otherwise, the input shape is the same as
     the shape of the gradient dY.
 
+    See the documentation for ``deform_grid``.
+
+    Parameters
+    ----------
+    dY : numpy array
+        the input gradient, or list of gradients of the same size
+    displacement : numpy array
+        displacement vectors for each control point
+    order : {0, 1, 2, 3, 4}
+        interpolation order
+    mode : ({nearest, wrap, reflect, mirror, constant})
+        border mode
+    cval : float
+        constant value to be used if mode == 'constant'
+    crop : None or list
+        None, or a list of slice() objects to crop the output
+    prefilter : bool
+        if True the input X will be pre-filtered with a spline filter
+    axis : None, int, a list of ints, or a list of lists of ints
+        the axes to deform over
+    X_shape: tuple with the shape of the input, or a list of tuples
+
     Returns
     -------
-    Returns the gradient with respect to X.
+    numpy array
+        Returns the gradient with respect to X.
 
     """
     # prepare inputs

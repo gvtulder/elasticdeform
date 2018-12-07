@@ -15,4 +15,6 @@ typedef struct {
 int DeformGrid(int, int, PyArrayObject**, PyArrayObject*, PyArrayObject*, PyArrayObject**,
                int, int*, int*, int*, double*);
 
+int NI_SplineFilter1DGrad(PyArrayObject*, int, int, PyArrayObject*);
+
 #endif

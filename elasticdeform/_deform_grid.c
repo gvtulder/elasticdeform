@@ -58,7 +58,40 @@ NI_ObjectToOutputArray(PyObject *object, PyArrayObject **array)
     return *array != NULL;
 }
 
-static PyObject *Py_DeformGrid_helper(PyObject *obj, PyObject *args, int gradient)
+static PyObject *Py_SplineFilter1D_grad(PyObject *obj, PyObject *args) {
+    PyArrayObject *input = NULL, *output = NULL;
+    int axis, order;
+
+    if (!PyArg_ParseTuple(args, "O&O&ii",
+                          NI_ObjectToInputArray, &input,
+                          NI_ObjectToOutputArray, &output,
+                          &axis, &order))
+        goto exit;
+
+    if (order < 0 || order > 5) {
+        PyErr_SetString(PyExc_RuntimeError, "spline order not supported");
+        goto exit;
+    }
+    if (axis < 0) {
+        axis += PyArray_NDIM(input);
+    }
+    if (axis < 0 || axis >= PyArray_NDIM(input)) {
+        PyErr_SetString(PyExc_RuntimeError, "invalid axis");
+        goto exit;
+    }
+
+    // NI_SplineFilter1DGrad will set a Python error if necessary
+    if (!NI_SplineFilter1DGrad(input, order, axis, output))
+        goto exit;
+
+exit:
+    Py_XDECREF(input);
+    Py_XDECREF(output);
+    return PyErr_Occurred() ? NULL : Py_BuildValue("");
+    return 0;
+}
+
+PyObject *Py_DeformGrid_helper(PyObject *obj, PyObject *args, int gradient)
 {
     PyObject *inputList = NULL, *outputList = NULL;
     PyArrayObject **inputs = NULL, **outputs = NULL;
@@ -243,6 +276,7 @@ static PyObject *Py_DeformGridGrad(PyObject *obj, PyObject *args)
 static PyMethodDef module_methods[] = {
     {"deform_grid", (PyCFunction)Py_DeformGrid, METH_VARARGS, NULL},
     {"deform_grid_grad", (PyCFunction)Py_DeformGridGrad, METH_VARARGS, NULL},
+    {"spline_filter1d_grad", (PyCFunction)Py_SplineFilter1D_grad, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
 

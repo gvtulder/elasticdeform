@@ -46,8 +46,8 @@ def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=Non
 # C implementation wrapper
 def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
     return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop, prefilter, axis)
-def deform_grid_gradient_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
-    return elasticdeform.deform_grid_gradient(X_in, displacement, order, mode, cval, crop, prefilter, axis)
+def deform_grid_gradient_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None, X_shape=None):
+    return elasticdeform.deform_grid_gradient(X_in, displacement, order, mode, cval, crop, prefilter, axis, X_shape)
 
 
 class TestDeformGrid(unittest.TestCase):
@@ -189,21 +189,34 @@ class TestDeformGrid(unittest.TestCase):
             np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
 
     def test_grad_2d(self):
-        shape = (50, 25)
+        points = (3, 5)
+        shape = (30, 25)
+        for order in (0, 1, 2, 3, 4):
+            for mode in ('nearest', 'wrap', 'reflect', 'mirror', 'constant'):
+                X = np.random.rand(*shape)
+                displacement = np.random.randn(2, *points) * 3
+                def fn(X):
+                    return deform_grid_c(X, displacement, order=order, mode=mode)
+                def grad_fn(gY, X):
+                    return deform_grid_gradient_c(gY, displacement, order=order, mode=mode)
+                self.verify_grad(X, fn, grad_fn, n_tests=5)
 
-        X = np.random.rand(*shape)
-        X = np.zeros(shape)
-        displacement = np.zeros([2, 3, 3])
-        displacement = np.random.randn(2, 5, 3) * 5
-
-        def fn(X):
-            return deform_grid_c(X, displacement, order=1)
-        def grad_fn(gY, X):
-            return deform_grid_gradient_c(gY, displacement, order=1)
-
-        self.verify_grad(X, fn, grad_fn)
+    def test_grad_crop(self):
+        points = (3, 3)
+        shape = (20, 20)
+        for crop in ((slice(0, 10), slice(0, 10)),
+                     (slice(4, 12), slice(4, 12)),
+                     (slice(10, 20), slice(10, 20))):
+            X = np.random.rand(*shape)
+            displacement = np.random.randn(2, *points) * 3
+            def fn(X):
+                return deform_grid_c(X, displacement, crop=crop)
+            def grad_fn(gY, X):
+                return deform_grid_gradient_c(gY, displacement, crop=crop, X_shape=shape)
+            self.verify_grad(X, fn, grad_fn)
 
     def verify_grad(self, X, fn, grad_fn, eps=1e-4, n_tests=10):
+        # test the gradient computed by grad_fn by comparing it with the numeric gradient of fn
         output_shape = fn(X).shape
 
         # test for multiple random projections

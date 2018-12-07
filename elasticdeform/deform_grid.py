@@ -130,13 +130,13 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
         return outputs[0]
 
 
-def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None, X_shape=None):
     """
-    Gradient for elastic deformation with a deformation grid
+    Gradient for deform_grid.
 
     Parameters
     ----------
-    dY: image, or list of images of the same size
+    dY: the input gradient, or list of gradients of the same size
     displacement: displacement vectors for each control point
     order: interpolation order
     mode: border mode (nearest, wrap, reflect, mirror, constant)
@@ -144,25 +144,47 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
     crop: None, or a list of slice() objects to crop the output
     prefilter: bool, if True the input X will be pre-filtered with a spline filter
     axis: None, int, a list of ints, or a list of lists of ints, the axes to deform over
+    X_shape: tuple with the shape of the input, or a list of tuples
 
     See the documentation for deform_grid.
 
-    If gradient == True, the method will compute the backward operation that
-    returns the gradient with respect to the input, with X being used as the
-    gradient of the output of the forward deformation.
+    This method performs the backward operation that returns the gradient of deform_grid
+    with respect to the input. This is similar to performing an inverse deformation on
+    the gradient, but not exactly the same: this function gives an exact gradient that
+    also takes the interpolation into account.
+
+    The X_shape parameter specifices the shape of the original inputs, and is only
+    necessary if the crop parameter is used. Otherwise, the input shape is the same as
+    the shape of the gradient dY.
 
     Returns
     -------
     Returns the gradient with respect to X.
 
     """
-    # prepare inputs and axis selection
+    # prepare inputs
     dYs = _normalize_inputs(dY)
-    axis, deform_shape = _normalize_axis_list(axis, dYs)
+
+    # find input shape
+    if isinstance(X_shape, tuple):
+        X_shape = [X_shape]
+    elif X_shape is None:
+        if crop is not None:
+            raise ValueError("X_shape is required if the crop parameter is given.")
+        X_shape = [dY.shape for dY in dYs]
+
+    # initialize gradient outputs
+    dXs = [numpy.zeros(s, dY.dtype) for s, dY in zip(X_shape, dYs)]
+
+    # prepare axis selection
+    axis, deform_shape = _normalize_axis_list(axis, dXs)
 
     # prepare cropping
-    assert crop is None  # TODO  support cropping
-    output_shapes, output_offset = _compute_output_shapes(dYs, axis, deform_shape, crop)
+    output_shapes, output_offset = _compute_output_shapes(dXs, axis, deform_shape, crop)
+    if [tuple(s) for s in output_shapes] != [dY.shape for dY in dYs]:
+        raise ValueError("X_shape does not match output shape and cropping. "
+                         "Expected output shape is %s, but %s given."
+                         % (str(output_shapes), str([dY.shape for dY in dYs])))
 
     # prepare other parameters
     displacement = _normalize_displacement(displacement, dYs, axis)
@@ -176,20 +198,24 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
         scipy.ndimage.spline_filter1d(displacement, axis=d, order=3, output=displacement_f)
         displacement = displacement_f
 
-    # initialize outputs  TODO  support cropping
-    dXs = [numpy.zeros_like(dY) for dY in dYs]
-
     _deform_grid.deform_grid_grad(dXs, displacement_f, output_offset, dYs, axis, order, mode, cval)
 
-    # prefilter inputs  TODO
+    # compute gradient of prefilter operation
+    dXs_f = []
     for i, x in enumerate(dXs):
         if prefilter and order[i] > 1:
-            raise "This gradient is not yet implemented."
+            x_f = numpy.zeros_like(x)
+            for d in axis[i]:
+                _deform_grid.spline_filter1d_grad(x, x_f, d, order[i])
+                x = x_f
+            dXs_f.append(x_f)
+        else:
+            dXs_f.append(x)
 
     if isinstance(dY, list):
-        return dXs
+        return dXs_f
     else:
-        return dXs[0]
+        return dXs_f[0]
 
 
 

@@ -14,6 +14,10 @@ for each grid point. This grid is then interpolated to compute a displacement fo
 each pixel in the input image. The input image is then deformed using the
 displacement vectors and a spline interpolation.
 
+In addition to the normal, forward deformation, this package also provides a
+function that can backpropagate the gradient through the deformation. This makes
+it possible to use the deformation as a layer in a convolutional neural network.
+
 
 Installation
 ------------
@@ -98,6 +102,33 @@ X_deformed_crop = elasticdeform.deform_grid(X, displacement, crop=crop)
 # the deformation is the same
 numpy.testing.assert_equal(X_deformed[crop], X_deformed_crop)
 ```
+
+### Gradient
+
+The `deform_grid_gradient` function can be used to backpropagate the gradient of
+the output with respect to the input. Call `deform_grid_gradient` with the
+parameters that were used for the forward step.
+```python
+X = numpy.random.rand(200, 300)
+
+# generate a deformation grid
+displacement = numpy.random.randn(2, 3, 3) * 25
+
+# perform forward deformation
+X_deformed = elasticdeform.deform_grid(X, displacement)
+
+# obtain the gradient w.r.t. X_deformed (e.g., with backpropagation)
+dX_deformed = numpy.random.randn(*X_deformed.shape)
+
+# compute the gradient w.r.t. X
+dX = elasticdeform.deform_grid_gradient(dX_deformed, displacement)
+```
+
+Note: The gradient function will assume that the input has the same size as the
+output. If you used the `crop` parameter in the forward phase, it is necessary to
+provide the gradient function with the original, uncropped input shape in the
+`X_shape` parameter.
+
 
 License information
 -------------------

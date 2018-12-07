@@ -46,6 +46,8 @@ def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=Non
 # C implementation wrapper
 def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
     return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop, prefilter, axis)
+def deform_grid_gradient_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+    return elasticdeform.deform_grid_gradient(X_in, displacement, order, mode, cval, crop, prefilter, axis)
 
 
 class TestDeformGrid(unittest.TestCase):
@@ -185,6 +187,50 @@ class TestDeformGrid(unittest.TestCase):
             res_X_test, res_Y_test = deform_grid_c([X, Y], displacement, axis=(1, 2), crop=crop)
             np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
             np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+
+    def test_grad_2d(self):
+        shape = (50, 25)
+
+        X = np.random.rand(*shape)
+        X = np.zeros(shape)
+        displacement = np.zeros([2, 3, 3])
+        displacement = np.random.randn(2, 5, 3) * 5
+
+        def fn(X):
+            return deform_grid_c(X, displacement, order=1)
+        def grad_fn(gY, X):
+            return deform_grid_gradient_c(gY, displacement, order=1)
+
+        self.verify_grad(X, fn, grad_fn)
+
+    def verify_grad(self, X, fn, grad_fn, eps=1e-4, n_tests=10):
+        output_shape = fn(X).shape
+
+        # test for multiple random projections
+        for t in range(n_tests):
+            random_projection = np.random.rand(*output_shape) + 0.5
+
+            # define a gradient cost function
+            def cost_fn(x):
+                return np.sum(fn(x) * random_projection)
+
+            # compute baseline result at X
+            f_x = cost_fn(X)
+
+            # initialize input that we can disturb later
+            X_copy = X.copy()
+
+            # iterate over all elements of X and compute the gradient
+            gx_ref = np.zeros_like(X)
+            for i in range(X.size):
+                X_copy[:] = X
+                X_copy.flat[i] += eps
+                f_eps = cost_fn(X_copy)
+                gx_ref.flat[i] = ((f_eps - f_x) / eps)
+
+            # now compute the gradient directly using grad_fn
+            gx_test = grad_fn(random_projection, X)
+            np.testing.assert_array_almost_equal(gx_ref, gx_test)
 
     def run_comparison(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
         # generate random displacement vector

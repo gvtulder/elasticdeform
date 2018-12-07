@@ -58,7 +58,7 @@ NI_ObjectToOutputArray(PyObject *object, PyArrayObject **array)
     return *array != NULL;
 }
 
-static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
+static PyObject *Py_DeformGrid_helper(PyObject *obj, PyObject *args, int gradient)
 {
     PyObject *inputList = NULL, *outputList = NULL;
     PyArrayObject **inputs = NULL, **outputs = NULL;
@@ -195,7 +195,7 @@ static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
         }
     }
 
-    DeformGrid(ninputs, inputs, displacement, outputOffset,
+    DeformGrid(gradient, ninputs, inputs, displacement, outputOffset,
                outputs, naxis, axis, order, mode, cval);
     #ifdef HAVE_WRITEBACKIFCOPY
         for(i = 0; i < ninputs; i++) {
@@ -230,8 +230,19 @@ exit:
     return PyErr_Occurred() ? NULL : Py_BuildValue("");
 }
 
+static PyObject *Py_DeformGrid(PyObject *obj, PyObject *args)
+{
+    return Py_DeformGrid_helper(obj, args, 0);
+}
+
+static PyObject *Py_DeformGridGrad(PyObject *obj, PyObject *args)
+{
+    return Py_DeformGrid_helper(obj, args, 1);
+}
+
 static PyMethodDef module_methods[] = {
     {"deform_grid", (PyCFunction)Py_DeformGrid, METH_VARARGS, NULL},
+    {"deform_grid_grad", (PyCFunction)Py_DeformGridGrad, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
 

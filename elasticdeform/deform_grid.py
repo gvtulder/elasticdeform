@@ -121,12 +121,75 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
 
     # prepare output arrays
     outputs = [numpy.zeros(os, dtype=x.dtype) for os, x in zip(output_shapes, Xs)]
+
     _deform_grid.deform_grid(Xs_f, displacement_f, output_offset, outputs, axis, order, mode, cval)
 
     if isinstance(X, list):
         return outputs
     else:
         return outputs[0]
+
+
+def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+    """
+    Gradient for elastic deformation with a deformation grid
+
+    Parameters
+    ----------
+    dY: image, or list of images of the same size
+    displacement: displacement vectors for each control point
+    order: interpolation order
+    mode: border mode (nearest, wrap, reflect, mirror, constant)
+    cval: constant value to be used if mode == 'constant'
+    crop: None, or a list of slice() objects to crop the output
+    prefilter: bool, if True the input X will be pre-filtered with a spline filter
+    axis: None, int, a list of ints, or a list of lists of ints, the axes to deform over
+
+    See the documentation for deform_grid.
+
+    If gradient == True, the method will compute the backward operation that
+    returns the gradient with respect to the input, with X being used as the
+    gradient of the output of the forward deformation.
+
+    Returns
+    -------
+    Returns the gradient with respect to X.
+
+    """
+    # prepare inputs and axis selection
+    dYs = _normalize_inputs(dY)
+    axis, deform_shape = _normalize_axis_list(axis, dYs)
+
+    # prepare cropping
+    assert crop is None  # TODO  support cropping
+    output_shapes, output_offset = _compute_output_shapes(dYs, axis, deform_shape, crop)
+
+    # prepare other parameters
+    displacement = _normalize_displacement(displacement, dYs, axis)
+    order = _normalize_order(order, dYs)
+    mode = _normalize_mode(mode, dYs)
+    cval = _normalize_cval(cval, dYs)
+
+    # prefilter displacement
+    displacement_f = numpy.zeros_like(displacement)
+    for d in range(1, displacement.ndim):
+        scipy.ndimage.spline_filter1d(displacement, axis=d, order=3, output=displacement_f)
+        displacement = displacement_f
+
+    # initialize outputs  TODO  support cropping
+    dXs = [numpy.zeros_like(dY) for dY in dYs]
+
+    _deform_grid.deform_grid_grad(dXs, displacement_f, output_offset, dYs, axis, order, mode, cval)
+
+    # prefilter inputs  TODO
+    for i, x in enumerate(dXs):
+        if prefilter and order[i] > 1:
+            raise "This gradient is not yet implemented."
+
+    if isinstance(dY, list):
+        return dXs
+    else:
+        return dXs[0]
 
 
 

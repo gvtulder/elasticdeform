@@ -12,7 +12,7 @@ typedef struct {
     npy_intp step_stride;
 } NI_SteppingIterator;
 
-int DeformGrid(int, PyArrayObject**, PyArrayObject*, PyArrayObject*, PyArrayObject**,
+int DeformGrid(int, int, PyArrayObject**, PyArrayObject*, PyArrayObject*, PyArrayObject**,
                int, int*, int*, int*, double*);
 
 #endif

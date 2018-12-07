@@ -270,7 +270,39 @@ case NPY_##_TYPE:                                    \
     *(_type *)_po = (_type)_t;                       \
     break
 
-int DeformGrid(int ninputs,
+/* added for gradients */
+#define CASE_INTERP_INCR(_TYPE, _type, _po, _t) \
+case _TYPE:                                     \
+    *(_type *)_po += (_type)_t;                 \
+    break
+
+/* added for gradients */
+#define CASE_INTERP_INCR_UINT(_TYPE, _type, _po, _t)  \
+case NPY_##_TYPE:                                     \
+    _t += *(_type *)_po;                              \
+    _t = _t > 0 ? _t + 0.5 : 0;                       \
+    _t = _t > NPY_MAX_##_TYPE ? NPY_MAX_##_TYPE : t;  \
+    _t = _t < 0 ? 0 : t;                              \
+    *(_type *)_po = (_type)_t;                        \
+    break
+
+/* added for gradients */
+#define CASE_INTERP_INCR_INT(_TYPE, _type, _po, _t)   \
+case NPY_##_TYPE:                                     \
+    _t += *(_type *)_po;                              \
+    _t = _t > 0 ? _t + 0.5 : _t - 0.5;                \
+    _t = _t > NPY_MAX_##_TYPE ? NPY_MAX_##_TYPE : t;  \
+    _t = _t < NPY_MIN_##_TYPE ? NPY_MIN_##_TYPE : t;  \
+    *(_type *)_po = (_type)_t;                        \
+    break
+
+/* added for gradients */
+#define CASE_INTERP_GRAD(_TYPE, _type, _grad, _po)  \
+case NPY_##_TYPE:                                   \
+    _grad = *(_type *)(_po);                        \
+    break
+
+int DeformGrid(int gradient, int ninputs,
                PyArrayObject** inputs, PyArrayObject* displacement, PyArrayObject* output_offset,
                PyArrayObject** outputs, int naxis, int *axis, int* orders, int* modes, double* cvals)
 {
@@ -749,87 +781,163 @@ int DeformGrid(int ninputs,
                     slo = slo / osteps[ii + hh * ninputs];
                 }
                 double t = 0.0;
-                if (!constant) {
-                    npy_intp *ff = fcoordinates + (ii * naxis * max_filter_size);
-                    const int type_num = PyArray_TYPE(inputs[ii]);
-                    t = 0.0;
-                    for(hh = 0; hh < filter_sizes[ii]; hh++) {
-                        double coeff = 0.0;
-                        npy_intp idx = 0;
 
-                        if (NPY_UNLIKELY(edge)) {
-                            for(ll = 0; ll < naxis; ll++) {
-                                if (edge_offsets[ii * naxis + ll])
-                                    idx += edge_offsets[ii * naxis + ll][ff[ll]];
-                                else
-                                    idx += ff[ll] * istrides[ii * naxis + ll];
+                if (!gradient) {
+                    /* forward computation */
+                    if (!constant) {
+                        npy_intp *ff = fcoordinates + (ii * naxis * max_filter_size);
+                        const int type_num = PyArray_TYPE(inputs[ii]);
+                        t = 0.0;
+                        for(hh = 0; hh < filter_sizes[ii]; hh++) {
+                            double coeff = 0.0;
+                            npy_intp idx = 0;
+
+                            if (NPY_UNLIKELY(edge)) {
+                                for(ll = 0; ll < naxis; ll++) {
+                                    if (edge_offsets[ii * naxis + ll])
+                                        idx += edge_offsets[ii * naxis + ll][ff[ll]];
+                                    else
+                                        idx += ff[ll] * istrides[ii * naxis + ll];
+                                }
+                            } else {
+                                idx = foffsets[hh + ii * max_filter_size];
                             }
-                        } else {
-                            idx = foffsets[hh + ii * max_filter_size];
+                            idx += offset + istepoffset;
+                            switch (type_num) {
+                                CASE_INTERP_COEFF(NPY_BOOL, npy_bool,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_UBYTE, npy_ubyte,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_USHORT, npy_ushort,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_UINT, npy_uint,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_ULONG, npy_ulong,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_ULONGLONG, npy_ulonglong,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_BYTE, npy_byte,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_SHORT, npy_short,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_INT, npy_int,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_LONG, npy_long,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_LONGLONG, npy_longlong,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_FLOAT, npy_float,
+                                                  coeff, pis[ii], idx);
+                                CASE_INTERP_COEFF(NPY_DOUBLE, npy_double,
+                                                  coeff, pis[ii], idx);
+                            default:
+                                NPY_END_THREADS;
+                                PyErr_SetString(PyExc_RuntimeError,
+                                                "data type not supported");
+                                goto exit;
+                            }
+                            /* calculate the interpolated value: */
+                            for(ll = 0; ll < naxis; ll++)
+                                if (orders[ii] > 0)
+                                    coeff *= splvals[ii * naxis + ll][ff[ll]];
+                            t += coeff;
+                            ff += naxis;
                         }
-                        idx += offset + istepoffset;
-                        switch (type_num) {
-                            CASE_INTERP_COEFF(NPY_BOOL, npy_bool,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_UBYTE, npy_ubyte,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_USHORT, npy_ushort,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_UINT, npy_uint,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_ULONG, npy_ulong,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_ULONGLONG, npy_ulonglong,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_BYTE, npy_byte,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_SHORT, npy_short,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_INT, npy_int,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_LONG, npy_long,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_LONGLONG, npy_longlong,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_FLOAT, npy_float,
-                                              coeff, pis[ii], idx);
-                            CASE_INTERP_COEFF(NPY_DOUBLE, npy_double,
-                                              coeff, pis[ii], idx);
+                    } else {
+                        t = cvals[ii];
+                    }
+                    /* store output value: */
+                    switch (PyArray_TYPE(outputs[ii])) {
+                        CASE_INTERP_OUT(NPY_BOOL, npy_bool, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_UINT(UBYTE, npy_ubyte, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_UINT(USHORT, npy_ushort, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_UINT(UINT, npy_uint, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_UINT(ULONG, npy_ulong, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_UINT(ULONGLONG, npy_ulonglong, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_INT(BYTE, npy_byte, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_INT(SHORT, npy_short, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_INT(INT, npy_int, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_INT(LONG, npy_long, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT_INT(LONGLONG, npy_longlong, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT(NPY_FLOAT, npy_float, (pos[ii] + ostepoffset), t);
+                        CASE_INTERP_OUT(NPY_DOUBLE, npy_double, (pos[ii] + ostepoffset), t);
+                    default:
+                        NPY_END_THREADS;
+                        PyErr_SetString(PyExc_RuntimeError, "data type not supported");
+                        goto exit;
+                    }
+
+                } else {
+                    /* gradient computation */
+                    if (!constant) {
+                        /* fetch output gradient */
+                        double grad = 0.0;
+                        switch (PyArray_TYPE(outputs[ii])) {
+                            CASE_INTERP_GRAD(BOOL, npy_bool, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(UBYTE, npy_ubyte, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(USHORT, npy_ushort, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(UINT, npy_uint, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(ULONG, npy_ulong, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(ULONGLONG, npy_ulonglong, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(BYTE, npy_byte, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(SHORT, npy_short, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(INT, npy_int, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(LONG, npy_long, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(LONGLONG, npy_longlong, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(FLOAT, npy_float, grad, (pos[ii] + ostepoffset));
+                            CASE_INTERP_GRAD(DOUBLE, npy_double, grad, (pos[ii] + ostepoffset));
                         default:
                             NPY_END_THREADS;
-                            PyErr_SetString(PyExc_RuntimeError,
-                                            "data type not supported");
+                            PyErr_SetString(PyExc_RuntimeError, "data type not supported");
                             goto exit;
                         }
-                        /* calculate the interpolated value: */
-                        for(ll = 0; ll < naxis; ll++)
-                            if (orders[ii] > 0)
-                                coeff *= splvals[ii * naxis + ll][ff[ll]];
-                        t += coeff;
-                        ff += naxis;
+
+                        npy_intp *ff = fcoordinates + (ii * naxis * max_filter_size);
+                        const int type_num = PyArray_TYPE(inputs[ii]);
+                        for(hh = 0; hh < filter_sizes[ii]; hh++) {
+                            double coeff = grad;
+                            npy_intp idx = 0;
+
+                            /* calculate the interpolated value: */
+                            for(ll = 0; ll < naxis; ll++)
+                                if (orders[ii] > 0)
+                                    coeff *= splvals[ii * naxis + ll][ff[ll]];
+
+                            if (NPY_UNLIKELY(edge)) {
+                                for(ll = 0; ll < naxis; ll++) {
+                                    if (edge_offsets[ii * naxis + ll])
+                                        idx += edge_offsets[ii * naxis + ll][ff[ll]];
+                                    else
+                                        idx += ff[ll] * istrides[ii * naxis + ll];
+                                }
+                            } else {
+                                idx = foffsets[hh + ii * max_filter_size];
+                            }
+                            idx += offset + istepoffset;
+                            /* write coeff to input gradient */
+                            switch (type_num) {
+                                CASE_INTERP_INCR(NPY_BOOL, npy_bool, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_UBYTE, npy_ubyte, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_USHORT, npy_ushort, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_UINT, npy_uint, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_ULONG, npy_ulong, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_ULONGLONG, npy_ulonglong, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_BYTE, npy_byte, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_SHORT, npy_short, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_INT, npy_int, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_LONG, npy_long, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_LONGLONG, npy_longlong, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_FLOAT, npy_float, (pis[ii] + idx), coeff);
+                                CASE_INTERP_INCR(NPY_DOUBLE, npy_double, (pis[ii] + idx), coeff);
+                            default:
+                                NPY_END_THREADS;
+                                PyErr_SetString(PyExc_RuntimeError,
+                                                "data type not supported");
+                                goto exit;
+                            }
+                            ff += naxis;
+                        }
                     }
-                } else {
-                    t = cvals[ii];
-                }
-                /* store output value: */
-                switch (PyArray_TYPE(outputs[ii])) {
-                    CASE_INTERP_OUT(NPY_BOOL, npy_bool, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_UINT(UBYTE, npy_ubyte, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_UINT(USHORT, npy_ushort, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_UINT(UINT, npy_uint, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_UINT(ULONG, npy_ulong, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_UINT(ULONGLONG, npy_ulonglong, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_INT(BYTE, npy_byte, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_INT(SHORT, npy_short, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_INT(INT, npy_int, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_INT(LONG, npy_long, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT_INT(LONGLONG, npy_longlong, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT(NPY_FLOAT, npy_float, (pos[ii] + ostepoffset), t);
-                    CASE_INTERP_OUT(NPY_DOUBLE, npy_double, (pos[ii] + ostepoffset), t);
-                default:
-                    NPY_END_THREADS;
-                    PyErr_SetString(PyExc_RuntimeError, "data type not supported");
-                    goto exit;
                 }
             }
             NI_ITERATOR_NEXT(ios[ii], pos[ii]);

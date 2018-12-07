@@ -1,6 +1,13 @@
-import setuptools
-from distutils.core import setup, Extension
-import numpy.distutils.misc_util
+from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext as _build_ext
+
+class build_ext(_build_ext):
+    def finalize_options(self):
+        _build_ext.finalize_options(self)
+        # Prevent numpy from thinking it is still in its setup process:
+        __builtins__.__NUMPY_SETUP__ = False
+        import numpy
+        self.include_dirs.append(numpy.get_include())
 
 with open("README.md") as f:
     readme_txt = f.read()
@@ -20,7 +27,9 @@ setup(name='elasticdeform',
                               'elasticdeform/deform.c',
                               'elasticdeform/from_nd_image.c'],
                              include_dirs=['elasticdeform'])],
-      include_dirs=numpy.distutils.misc_util.get_numpy_include_dirs(),
+      cmdclass={'build_ext': build_ext},
+      setup_requires=['numpy'],
+      install_requires=['numpy', 'scipy'],
       classifiers=[
           "Programming Language :: Python :: 2",
           "Programming Language :: Python :: 3",

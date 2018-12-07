@@ -14,7 +14,7 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 
 # -- Project information -----------------------------------------------------
@@ -43,6 +43,8 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
 ]
+
+autodoc_mock_imports = ['tensorflow', 'elasticdeform._deform_grid']
 
 napoleon_google_docstring = False
 napoleon_use_param = False

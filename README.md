@@ -147,7 +147,7 @@ X_val = numpy.random.rand(200, 300)
 dY_val = numpy.random.rand(200, 300)
 
 # construct TensorFlow input and top gradient
-displacement = tf.Variable(displacement)
+displacement = tf.Variable(displacement_val)
 X = tf.Variable(X_val)
 dY = tf.Variable(dY_val)
 

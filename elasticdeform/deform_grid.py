@@ -3,7 +3,7 @@ import scipy.ndimage
 
 from . import _deform_grid
 
-def deform_random_grid(X, sigma=25, points=3, *args, **kwargs):
+def deform_random_grid(X, sigma=25, points=3, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
     """
     Elastic deformation with a random deformation grid
 
@@ -34,7 +34,7 @@ def deform_random_grid(X, sigma=25, points=3, *args, **kwargs):
         points = [points] * len(deform_shape)
 
     displacement = numpy.random.randn(len(deform_shape), *points) * sigma
-    return deform_grid(X, displacement, *args, **kwargs)
+    return deform_grid(X, displacement, order, mode, cval, crop, prefilter, axis)
 
 
 def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):

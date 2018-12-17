@@ -1,7 +1,8 @@
+import numpy
 import tensorflow
 import elasticdeform
 
-def deform_grid(X, *args, **kwargs):
+def deform_grid(X, displacement, *args, **kwargs):
     """
     Elastic deformation with a deformation grid, wrapped in a TensorFlow Op.
 
@@ -12,7 +13,7 @@ def deform_grid(X, *args, **kwargs):
     ----------
     X : Tensor or list of Tensors
         input image or list of input images
-    displacement : numpy array
+    displacement : Tensor or numpy array
         displacement vectors for each control point
 
     Returns
@@ -25,22 +26,29 @@ def deform_grid(X, *args, **kwargs):
     elasticdeform.deform_grid : for the other parameters
     """
     @tensorflow.custom_gradient
-    def f(*xs):
-        def fwd(*xs):
-            return elasticdeform.deform_grid(list(xs), *args, **kwargs)
+    def f(displacement, *xs):
+        def fwd(displacement, *xs):
+            return elasticdeform.deform_grid(list(xs), displacement, *args, **kwargs)
 
         def bwd(*dys):
-            def grad(*dys_xs):
-                dys = dys_xs[:len(xs)]
-                X_shape = [x.shape for x in dys_xs[len(xs):]]
-                return elasticdeform.deform_grid_gradient(list(dys), *args, X_shape=X_shape, **kwargs)
-            return tensorflow.py_func(grad, dys + xs, [dy.dtype for dy in dys],
+            def grad(*dys_disp_xs):
+                dys = dys_disp_xs[:len(xs)]
+                displacement = dys_disp_xs[len(xs)]
+                X_shape = [x.shape for x in dys_disp_xs[len(xs) + 1:]]
+                dXs = elasticdeform.deform_grid_gradient(list(dys), displacement,
+                                                         *args, X_shape=X_shape, **kwargs)
+                return [numpy.nan * displacement] + dXs
+            grad_inputs = dys + (displacement,) + xs
+            grad_output_dtypes = [displacement.dtype] + [x.dtype for x in xs]
+            return tensorflow.py_func(grad, grad_inputs, grad_output_dtypes,
                                       stateful=False, name='DeformGridGrad')
 
-        y = tensorflow.py_func(fwd, xs, [x.dtype for x in xs], stateful=False, name='DeformGrid')
+        inputs = (displacement,) + xs
+        output_dtypes = [x.dtype for x in xs]
+        y = tensorflow.py_func(fwd, inputs, output_dtypes, stateful=False, name='DeformGrid')
         return y, bwd
 
     if isinstance(X, (list, tuple)):
-        return f(*X)
+        return f(displacement, *X)
     else:
-        return f(X)[0]
+        return f(displacement, X)[0]

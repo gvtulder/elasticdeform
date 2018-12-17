@@ -142,11 +142,12 @@ the same parameters.
 import numpy
 import elasticdeform.tf as etf
 
-displacement = numpy.random.randn(2, 3, 3) * 5
+displacement_val = numpy.random.randn(2, 3, 3) * 5
 X_val = numpy.random.rand(200, 300)
 dY_val = numpy.random.rand(200, 300)
 
 # construct TensorFlow input and top gradient
+displacement = tf.Variable(displacement)
 X = tf.Variable(X_val)
 dY = tf.Variable(dY_val)
 

@@ -195,20 +195,20 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
     elif X_shape is None:
         if crop is not None:
             raise ValueError("X_shape is required if the crop parameter is given.")
-        X_shape = [dY.shape for dY in dYs]
+        X_shape = [dy.shape for dy in dYs]
 
     # initialize gradient outputs
-    dXs = [numpy.zeros(s, dY.dtype) for s, dY in zip(X_shape, dYs)]
+    dXs = [numpy.zeros(s, dy.dtype) for s, dy in zip(X_shape, dYs)]
 
     # prepare axis selection
     axis, deform_shape = _normalize_axis_list(axis, dXs)
 
     # prepare cropping
     output_shapes, output_offset = _compute_output_shapes(dXs, axis, deform_shape, crop)
-    if [tuple(s) for s in output_shapes] != [dY.shape for dY in dYs]:
+    if [tuple(s) for s in output_shapes] != [dy.shape for dy in dYs]:
         raise ValueError("X_shape does not match output shape and cropping. "
                          "Expected output shape is %s, but %s given."
-                         % (str(output_shapes), str([dY.shape for dY in dYs])))
+                         % (str(output_shapes), str([dy.shape for dy in dYs])))
 
     # prepare other parameters
     displacement = _normalize_displacement(displacement, dYs, axis)

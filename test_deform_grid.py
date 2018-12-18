@@ -225,6 +225,37 @@ class TestDeformGrid(unittest.TestCase):
                 return deform_grid_gradient_c(gY, displacement, crop=crop, X_shape=shape)
             self.verify_grad(X, fn, grad_fn)
 
+    def test_grad_with_list(self):
+        points = (3, 3)
+        shape = (100, 75)
+        sigma = 25
+        for order in (0, 1, 2, 3, 4, [0, 3]):
+            for crop in (None, (slice(15, 25), slice(15, 50))):
+                for cval in (0.0, 1.0, [0.0, 1.0]):
+                    for mode in ('constant', ['constant', 'reflect']):
+                        # generate random displacement vector
+                        displacement = np.random.randn(len(shape), *points) * sigma
+                        # generate random data
+                        X = np.random.rand(*shape).astype('float64')
+                        # generate more random data, force a different data type
+                        Y = np.random.rand(*shape).astype('float32')
+                        # compute forward
+                        Xdeformed, Ydeformed = deform_grid_c([X, Y], displacement, order=order, crop=crop, cval=cval, mode=mode)
+                        # generate random gradients
+                        dXdeformed = np.random.rand(*Xdeformed.shape).astype('float64')
+                        dYdeformed = np.random.rand(*Ydeformed.shape).astype('float32')
+
+                        # test and compare
+                        order_list = order if isinstance(order, list) else [order] * 2
+                        mode_list = mode if isinstance(mode, list) else [mode] * 2
+                        cval_list = cval if isinstance(cval, list) else [cval] * 2
+                        res_dX_ref = deform_grid_gradient_c(dXdeformed, displacement, order=order_list[0], crop=crop, cval=cval_list[0], mode=mode_list[0], X_shape=X.shape)
+                        res_dY_ref = deform_grid_gradient_c(dYdeformed, displacement, order=order_list[1], crop=crop, cval=cval_list[1], mode=mode_list[1], X_shape=Y.shape)
+                        [res_dX_test, res_dY_test] = deform_grid_gradient_c([dXdeformed, dYdeformed], displacement, order=order, crop=crop, cval=cval, mode=mode, X_shape=[X.shape, Y.shape])
+
+                        np.testing.assert_array_almost_equal(res_dX_ref, res_dX_test)
+                        np.testing.assert_array_almost_equal(res_dY_ref, res_dY_test)
+
     def verify_grad(self, X, fn, grad_fn, eps=1e-4, n_tests=10):
         # test the gradient computed by grad_fn by comparing it with the numeric gradient of fn
         output_shape = fn(X).shape

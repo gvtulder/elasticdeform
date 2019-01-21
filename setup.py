@@ -1,3 +1,4 @@
+import io
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext as _build_ext
 
@@ -9,7 +10,7 @@ class build_ext(_build_ext):
         import numpy
         self.include_dirs.append(numpy.get_include())
 
-with open('README.md', encoding='utf-8') as f:
+with io.open('README.md', encoding='utf-8') as f:
     readme_txt = f.read()
 
 setup(name='elasticdeform',

@@ -9,7 +9,7 @@ class build_ext(_build_ext):
         import numpy
         self.include_dirs.append(numpy.get_include())
 
-with open("README.md") as f:
+with open('README.md', encoding='utf-8') as f:
     readme_txt = f.read()
 
 setup(name='elasticdeform',

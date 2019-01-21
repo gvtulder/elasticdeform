@@ -8,7 +8,7 @@ This library implements elastic grid-based deformations for N-dimensional images
 The elastic deformation approach is described in
 *   Ronneberger, Fischer, and Brox, "U-Net: Convolutional Networks for Biomedical
     Image Segmentation" (<https://arxiv.org/abs/1505.04597>)
-*   Cicek et al., "3D U-Net: Learning Dense Volumetric
+*   Çiçek et al., "3D U-Net: Learning Dense Volumetric
     Segmentation from Sparse Annotation" (<https://arxiv.org/abs/1606.06650>)
 
 The procedure generates a coarse displacement grid with a random displacement

@@ -349,6 +349,7 @@ int DeformGrid(int gradient, int ninputs,
     npy_intp kk, hh, ll, jj, ii, ss;
     npy_intp size, max_filter_size = 0;
     double **splvals = NULL, **dsplvals = NULL;
+    double **cur_dsplvals = NULL;
     npy_intp idimensions[NPY_MAXDIMS];
     npy_intp *istrides = NULL;
     npy_intp odimensions[NPY_MAXDIMS];
@@ -359,6 +360,15 @@ int DeformGrid(int gradient, int ninputs,
     npy_intp *osteps = NULL, *ostepstrides = NULL;
     double displ[NPY_MAXDIMS];
     NI_Iterator *ios = NULL;
+    npy_int perimeter = 0;
+    double cc, t, coeff, grad, cp;
+    int constant, edge, dedge;
+    npy_intp offset, start, idx, len, s2;
+    npy_intp istepoffset, ostepoffset, ddoffset;
+    int sli, slo;
+    npy_intp *ff;
+    int type_num;
+    npy_intp *dff;
 
     /* spline order for deplacement */
     int dorder = 3;
@@ -479,7 +489,7 @@ int DeformGrid(int gradient, int ninputs,
         }
     }
 
-    npy_int perimeter = 0;
+    perimeter = 0;
     for(jj = 0; jj < naxis; jj++) {
         perimeter += odimensions[jj];
     }
@@ -629,7 +639,7 @@ int DeformGrid(int gradient, int ninputs,
     kk = 0;
     for(hh = 0; hh < naxis; hh++) {
         for(jj = 0; jj < odimensions[hh]; jj++) {
-            double cp = (double)(ncontrolpoints[hh] - 1) * (double)(jj + ooffsets[hh]) / (double)(idimensions[hh] - 1);
+            cp = (double)(ncontrolpoints[hh] - 1) * (double)(jj + ooffsets[hh]) / (double)(idimensions[hh] - 1);
             get_spline_interpolation_weights(cp, dorder, dsplvals[kk]);
             kk++;
         }
@@ -637,13 +647,12 @@ int DeformGrid(int gradient, int ninputs,
 
     for(kk = 0; kk < size; kk++) {
         /* compute deplacement on this dimension */
-        int dedge = 0;
-        npy_intp ddoffset = 0;
+        dedge = 0;
+        ddoffset = 0;
         for(jj = 0; jj < naxis; jj++) {
             /* assumption: by definition, cp is inside the deplacement array */
-            double cp = (double)(ncontrolpoints[jj] - 1) * (double)(ios[0].coordinates[jj] + ooffsets[jj]) / (double)(idimensions[jj] - 1);
+            cp = (double)(ncontrolpoints[jj] - 1) * (double)(ios[0].coordinates[jj] + ooffsets[jj]) / (double)(idimensions[jj] - 1);
             /* find the filter location along this axis: */
-            npy_intp start;
             if (dorder & 1) {
                 start = (npy_intp)floor(cp) - dorder / 2;
             } else {
@@ -656,12 +665,12 @@ int DeformGrid(int gradient, int ninputs,
                 dedge = 1;
                 dedge_offsets[jj] = ddata_offsets[jj];
                 for(ll = 0; ll <= dorder; ll++) {
-                    npy_intp idx = start + ll;
-                    npy_intp len = ddimensions[jj + 1];
+                    idx = start + ll;
+                    len = ddimensions[jj + 1];
                     if (len <= 1) {
                         idx = 0;
                     } else {
-                        npy_intp s2 = 2 * len - 2;
+                        s2 = 2 * len - 2;
                         if (idx < 0) {
                             idx = s2 * (int)(-idx / s2) + idx;
                             idx = idx <= 1 - len ? idx + s2 : -idx;
@@ -683,12 +692,12 @@ int DeformGrid(int gradient, int ninputs,
         /* iterate over axes: */
         for(hh = 0; hh < naxis; hh++) {
             /* compute displacement */
-            npy_intp *dff = dfcoordinates;
-            const int type_num = PyArray_TYPE(displacement);
+            dff = dfcoordinates;
+            type_num = PyArray_TYPE(displacement);
             displ[hh] = 0.0;
             for(jj = 0; jj < dfilter_size; jj++) {
-                double coeff = 0.0;
-                npy_intp idx = 0;
+                coeff = 0.0;
+                idx = 0;
 
                 if (NPY_UNLIKELY(dedge)) {
                     for(ll = 0; ll < naxis; ll++) {
@@ -736,7 +745,7 @@ int DeformGrid(int gradient, int ninputs,
                     goto exit;
                 }
                 /* calculate the interpolated value: */
-                double **cur_dsplvals = dsplvals;
+                cur_dsplvals = dsplvals;
                 for(ll = 0; ll < naxis; ll++) {
                     if (dorder > 0)
                         coeff *= cur_dsplvals[ios[0].coordinates[ll]][dff[ll]];
@@ -750,17 +759,17 @@ int DeformGrid(int gradient, int ninputs,
 
         /* iterate over all inputs */
         for(ii = 0; ii < ninputs; ii++) {
-            int constant = 0, edge = 0;
-            npy_intp offset = 0;
+            constant = 0;
+            edge = 0;
+            offset = 0;
 
             /* iterate over axes: */
             for(hh = 0; hh < naxis; hh++) {
                 /* compute the coordinate: coordinate of output voxel io.coordinates[hh] + displacement displ[hh] */
                 /* if the input coordinate is outside the borders, map it: */
-                double cc = map_coordinate(ios[ii].coordinates[hh] + ooffsets[hh] + displ[hh], idimensions[hh], modes[ii]);
+                cc = map_coordinate(ios[ii].coordinates[hh] + ooffsets[hh] + displ[hh], idimensions[hh], modes[ii]);
                 if (cc > -1.0) {
                     /* find the filter location along this axis: */
-                    npy_intp start;
                     if (orders[ii] & 1) {
                         start = (npy_intp)floor(cc) - orders[ii] / 2;
                     } else {
@@ -773,12 +782,12 @@ int DeformGrid(int gradient, int ninputs,
                         edge = 1;
                         edge_offsets[ii * naxis + hh] = data_offsets[ii * naxis + hh];
                         for(ll = 0; ll <= orders[ii]; ll++) {
-                            npy_intp idx = start + ll;
-                            npy_intp len = idimensions[hh];
+                            idx = start + ll;
+                            len = idimensions[hh];
                             if (len <= 1) {
                                 idx = 0;
                             } else {
-                                npy_intp s2 = 2 * len - 2;
+                                s2 = 2 * len - 2;
                                 if (idx < 0) {
                                     idx = s2 * (int)(-idx / s2) + idx;
                                     idx = idx <= 1 - len ? idx + s2 : -idx;
@@ -806,26 +815,27 @@ int DeformGrid(int gradient, int ninputs,
             /* interpolate value for this input */
             /* iterate over all steps (the non-deformed axes */
             for(ss = 0; ss < istepsize[ii]; ss++) {
-                npy_intp istepoffset = 0;
-                npy_intp ostepoffset = 0;
-                int sli = ss, slo = ss;
+                istepoffset = 0;
+                ostepoffset = 0;
+                sli = ss;
+                slo = ss;
                 for(hh = 0; hh < isteprank[ii]; hh++) {
                     istepoffset += istepstrides[ii + hh * ninputs] * (sli % isteps[ii + hh * ninputs]);
                     sli = sli / isteps[ii + hh * ninputs];
                     ostepoffset += ostepstrides[ii + hh * ninputs] * (slo % osteps[ii + hh * ninputs]);
                     slo = slo / osteps[ii + hh * ninputs];
                 }
-                double t = 0.0;
+                t = 0.0;
 
                 if (!gradient) {
                     /* forward computation */
                     if (!constant) {
-                        npy_intp *ff = fcoordinates + (ii * naxis * max_filter_size);
-                        const int type_num = PyArray_TYPE(inputs[ii]);
+                        ff = fcoordinates + (ii * naxis * max_filter_size);
+                        type_num = PyArray_TYPE(inputs[ii]);
                         t = 0.0;
                         for(hh = 0; hh < filter_sizes[ii]; hh++) {
-                            double coeff = 0.0;
-                            npy_intp idx = 0;
+                            coeff = 0.0;
+                            idx = 0;
 
                             if (NPY_UNLIKELY(edge)) {
                                 for(ll = 0; ll < naxis; ll++) {
@@ -906,7 +916,7 @@ int DeformGrid(int gradient, int ninputs,
                     /* gradient computation */
                     if (!constant) {
                         /* fetch output gradient */
-                        double grad = 0.0;
+                        grad = 0.0;
                         switch (PyArray_TYPE(outputs[ii])) {
                             CASE_INTERP_GRAD(BOOL, npy_bool, grad, (pos[ii] + ostepoffset));
                             CASE_INTERP_GRAD(UBYTE, npy_ubyte, grad, (pos[ii] + ostepoffset));
@@ -927,11 +937,11 @@ int DeformGrid(int gradient, int ninputs,
                             goto exit;
                         }
 
-                        npy_intp *ff = fcoordinates + (ii * naxis * max_filter_size);
-                        const int type_num = PyArray_TYPE(inputs[ii]);
+                        ff = fcoordinates + (ii * naxis * max_filter_size);
+                        type_num = PyArray_TYPE(inputs[ii]);
                         for(hh = 0; hh < filter_sizes[ii]; hh++) {
-                            double coeff = grad;
-                            npy_intp idx = 0;
+                            coeff = grad;
+                            idx = 0;
 
                             /* calculate the interpolated value: */
                             for(ll = 0; ll < naxis; ll++)

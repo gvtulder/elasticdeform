@@ -3,6 +3,7 @@ Elastic deformations for N-dimensional images (Python, SciPy, NumPy, TensorFlow)
 
 [![Documentation Status](https://readthedocs.org/projects/elasticdeform/badge/?version=latest)](https://elasticdeform.readthedocs.io/en/latest/?badge=latest)
 [![Build Status](https://travis-ci.org/gvtulder/elasticdeform.svg?branch=master)](https://travis-ci.org/gvtulder/elasticdeform)
+[![Build status](https://ci.appveyor.com/api/projects/status/air4dambkpcummeh/branch/master?svg=true)](https://ci.appveyor.com/project/gvtulder/elasticdeform/branch/master)
 
 This library implements elastic grid-based deformations for N-dimensional images.
 

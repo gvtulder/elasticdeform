@@ -5,10 +5,10 @@ environment:
     # https://www.appveyor.com/docs/windows-images-software/#python
     # The list here is complete (excluding Python 2.6, which
     # isn't covered by this document) at the time of writing.
-    - PYTHON: "C:\\Python27"
-    - PYTHON: "C:\\Python35"
-    - PYTHON: "C:\\Python36"
-    - PYTHON: "C:\\Python37"
+#   - PYTHON: "C:\\Python27"
+#   - PYTHON: "C:\\Python35"
+#   - PYTHON: "C:\\Python36"
+#   - PYTHON: "C:\\Python37"
     - PYTHON: "C:\\Python27-x64"
     - PYTHON: "C:\\Python35-x64"
     - PYTHON: "C:\\Python36-x64"
@@ -29,15 +29,15 @@ test_script:
   # Note that you must use the environment variable %PYTHON% to refer to
   # the interpreter you're using - Appveyor does not do anything special
   # to put the Python version you want to use on PATH.
-  - "build.cmd %PYTHON%\\python -m pip install -e ."
-  - "build.cmd %PYTHON%\\python.exe test_deform_grid.py -v"
+  - "%PYTHON%\\python -m pip install -e ."
+  - "%PYTHON%\\python.exe test_deform_grid.py -v"
 
 after_test:
   # This step builds your wheels.
   # Again, you only need build.cmd if you're building C extensions for
   # 64-bit Python 3.3/3.4. And you need to use %PYTHON% to get the correct
   # interpreter
-  - "build.cmd %PYTHON%\\python.exe setup.py bdist_wheel"
+  - "%PYTHON%\\python.exe setup.py bdist_wheel"
 
 artifacts:
   # bdist_wheel puts your built wheel in the dist directory

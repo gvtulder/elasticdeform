@@ -36,7 +36,7 @@ pip install git+https://github.com/gvtulder/elasticdeform
 This library requires Python 3 and NumPy development headers.
 
 On Windows, try to install the precompiled binaries directly using `pip install elasticdeform`.
-If that does not work, [https://www.lfd.uci.edu/~gohlke/pythonlibs/#elasticdeform](these precompiled packages) might be an alternative option.
+If that does not work, [these precompiled packages](https://www.lfd.uci.edu/~gohlke/pythonlibs/#elasticdeform) might be an alternative option.
 
 
 Examples

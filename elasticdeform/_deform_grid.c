@@ -99,12 +99,13 @@ PyObject *Py_DeformGrid_helper(PyObject *obj, PyObject *args, int gradient)
     PyArrayObject *outputOffsetIn = NULL, *axisListIn = NULL;
     PyArrayObject *ordersIn = NULL, *modesIn = NULL, *cvalsIn = NULL;
     PyArrayObject *axisList = NULL, *orders = NULL, *modes = NULL, *cvals = NULL;
+    PyArrayObject *affineMatrixIn = NULL, *affineMatrix = NULL;
     int *order = NULL, *mode = NULL, *axis = NULL;
-    double *cval = NULL;
+    double *cval = NULL, *affine = NULL;
     int i, j;
     Py_ssize_t ninputs = 0, naxis = 0;
 
-    if (!PyArg_ParseTuple(args, "O!O&O&O!O&O&O&O&",
+    if (!PyArg_ParseTuple(args, "O!O&O&O!O&O&O&O&O&",
                           &PyList_Type, &inputList,
                           NI_ObjectToInputArray, &displacement,
                           NI_ObjectToOptionalInputArray, &outputOffsetIn,
@@ -112,7 +113,8 @@ PyObject *Py_DeformGrid_helper(PyObject *obj, PyObject *args, int gradient)
                           NI_ObjectToInputArray, &axisListIn,
                           NI_ObjectToInputArray, &ordersIn,
                           NI_ObjectToInputArray, &modesIn,
-                          NI_ObjectToInputArray, &cvalsIn))
+                          NI_ObjectToInputArray, &cvalsIn,
+                          NI_ObjectToOptionalInputArray, &affineMatrixIn))
         goto exit;
 
     /* check and collect inputs, outputs from lists */
@@ -228,8 +230,32 @@ PyObject *Py_DeformGrid_helper(PyObject *obj, PyObject *args, int gradient)
         }
     }
 
+    /* check shape of affine matrix, if given */
+    if (affineMatrixIn) {
+        if (PyArray_NDIM(affineMatrixIn) != 2 ||
+            PyArray_DIM(affineMatrixIn, 0) != naxis ||
+            PyArray_DIM(affineMatrixIn, 1) != (naxis + 1)) {
+            PyErr_SetString(PyExc_RuntimeError, "incorrect shape for affine matrix");
+            goto exit;
+        }
+        affineMatrix = (PyArrayObject*)PyArray_FromArray(affineMatrixIn, PyArray_DescrFromType(NPY_DOUBLE),
+                                                         NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED);
+        if (!affineMatrix) {
+            PyErr_SetString(PyExc_RuntimeError, "invalid affine matrix");
+            goto exit;
+        }
+        affine = malloc((naxis + 1) * naxis * sizeof(double));
+        if (!affine) {
+            PyErr_NoMemory();
+            goto exit;
+        }
+        for (i=0; i<(naxis + 1) * naxis; i++) {
+            affine[i] = (double)(*(npy_double *)PyArray_GETPTR2(affineMatrix, i / (naxis + 1), i % (naxis + 1)));
+        }
+    }
+
     DeformGrid(gradient, ninputs, inputs, displacement, outputOffset,
-               outputs, naxis, axis, order, mode, cval);
+               outputs, naxis, axis, order, mode, cval, affine);
     #ifdef HAVE_WRITEBACKIFCOPY
         for(i = 0; i < ninputs; i++) {
             PyArray_ResolveWritebackIfCopy(outputs[i]);
@@ -248,6 +274,8 @@ exit:
     Py_XDECREF(orders);
     Py_XDECREF(modes);
     Py_XDECREF(cvals);
+    Py_XDECREF(affineMatrixIn);
+    Py_XDECREF(affineMatrix);
     for(i = 0; i < ninputs; i++) {
         if (inputs)
             Py_XDECREF(inputs[i]);
@@ -260,6 +288,8 @@ exit:
     free(order);
     free(mode);
     free(cval);
+    if (affine)
+        free(affine);
     return PyErr_Occurred() ? NULL : Py_BuildValue("");
 }
 

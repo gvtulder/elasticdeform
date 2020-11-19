@@ -111,6 +111,29 @@ X_deformed_crop = elasticdeform.deform_grid(X, displacement, crop=crop)
 numpy.testing.assert_equal(X_deformed[crop], X_deformed_crop)
 ```
 
+
+### Rotate and zoom
+
+The deformation functions accept `rotate` and `zoom` parameters, which allows you
+to combine the elastic deformation with rotation and scaling. This can be useful
+as data augmentation step. The rotation and zoom are applied to the output
+coordinates, using the center pixel of the output patch as the origin.
+```python
+# apply deformation with a random 3 x 3 grid,
+# rotate by 30 degrees and rescale with a factor 1.5
+X_deformed = elasticdeform.deform_random_grid(X, sigma=25, points=3,
+                                              rotate=30, zoom=1.5)
+```
+Note that the output shape remains the same. The mapping of the input to the
+output is rotated within the given output frame.
+
+Rotate and zoom can be combined with the `crop` argument. In that case, the
+scaling and rotation is performed relative to the center of the cropped output.
+
+For more advanced transformations, it is also possible to provide an affine
+transformation matrix directly.
+
+
 ### Gradient
 
 The `deform_grid_gradient` function can be used to backpropagate the gradient of

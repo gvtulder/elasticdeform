@@ -54,10 +54,10 @@ def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=Non
     return out
 
 # C implementation wrapper
-def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
-    return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop, prefilter, axis)
-def deform_grid_gradient_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None, X_shape=None):
-    return elasticdeform.deform_grid_gradient(X_in, displacement, order, mode, cval, crop, prefilter, axis, X_shape)
+def deform_grid_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None, affine=None, rotate=None, zoom=None):
+    return elasticdeform.deform_grid(X_in, displacement, order, mode, cval, crop, prefilter, axis, affine, rotate, zoom)
+def deform_grid_gradient_c(X_in, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None, X_shape=None, affine=None, rotate=None, zoom=None):
+    return elasticdeform.deform_grid_gradient(X_in, displacement, order, mode, cval, crop, prefilter, axis, X_shape, affine, rotate, zoom)
 
 
 class TestDeformGrid(unittest.TestCase):
@@ -96,6 +96,30 @@ class TestDeformGrid(unittest.TestCase):
         order = 3
         for crop in ((slice(15, 25), slice(None), slice(None)),):
             self.run_comparison(shape, points, crop=crop, order=order)
+
+    def test_rotate(self):
+        points = (2, 2)
+        shape = (5, 5)
+        X = np.random.rand(*shape)
+        displacement = np.random.randn(2, *points) * 3
+        displacement = np.zeros_like(displacement)
+        no_rotate = deform_grid_c(X, displacement, mode='mirror', order=0)
+        for rot in (0, 1, 2, 3, 4):
+            with_rotate = deform_grid_c(X, displacement, mode='mirror', order=0, rotate=rot * 90)
+            np.testing.assert_array_almost_equal(np.rot90(no_rotate, rot), with_rotate)
+
+    def test_crop_rotate_zoom(self):
+        points = (3, 3)
+        shape = (100, 100)
+        # keep the center of the output in the same place before and after cropping
+        crop = (slice(10, 90), slice(20, 80))
+        for rotate in (-30, 0, 30, None):
+            for zoom in (0.5, 1.0, 1.5, None):
+                X = np.random.rand(*shape)
+                displacement = np.random.randn(2, *points) * 3
+                no_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom)
+                with_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom, crop=crop)
+                np.testing.assert_array_almost_equal(no_crop[crop], with_crop)
 
     def test_multi_2d(self):
         points = (3, 3)
@@ -224,6 +248,34 @@ class TestDeformGrid(unittest.TestCase):
             def grad_fn(gY, X):
                 return deform_grid_gradient_c(gY, displacement, crop=crop, X_shape=shape)
             self.verify_grad(X, fn, grad_fn)
+
+    def test_grad_zoom(self):
+        points = (3, 5)
+        shape = (30, 25)
+        order = 3
+        mode = 'constant'
+        for zoom in (0.5, 1.0, 1.5):
+            X = np.random.rand(*shape)
+            displacement = np.random.randn(2, *points) * 3
+            def fn(X):
+                return deform_grid_c(X, displacement, order=order, mode=mode, zoom=zoom)
+            def grad_fn(gY, X):
+                return deform_grid_gradient_c(gY, displacement, order=order, mode=mode, zoom=zoom)
+            self.verify_grad(X, fn, grad_fn, n_tests=5)
+
+    def test_grad_rotate(self):
+        points = (3, 5)
+        shape = (30, 25)
+        order = 3
+        mode = 'constant'
+        for rotate in (-20, 0, 20):
+            X = np.random.rand(*shape)
+            displacement = np.random.randn(2, *points) * 3
+            def fn(X):
+                return deform_grid_c(X, displacement, order=order, mode=mode, rotate=rotate)
+            def grad_fn(gY, X):
+                return deform_grid_gradient_c(gY, displacement, order=order, mode=mode, rotate=rotate)
+            self.verify_grad(X, fn, grad_fn, n_tests=5)
 
     def test_grad_with_list(self):
         points = (3, 3)

@@ -339,7 +339,8 @@ case NPY_##_TYPE:                                   \
 
 int DeformGrid(int gradient, int ninputs,
                PyArrayObject** inputs, PyArrayObject* displacement, PyArrayObject* output_offset,
-               PyArrayObject** outputs, int naxis, int *axis, int* orders, int* modes, double* cvals)
+               PyArrayObject** outputs, int naxis, int *axis, int* orders, int* modes,
+               double* cvals, double* affine)
 {
     char **pos = NULL, **pis = NULL, *pd = NULL;
     npy_intp **edge_offsets = NULL, **data_offsets = NULL, *filter_sizes = NULL, dfilter_size;
@@ -766,8 +767,18 @@ int DeformGrid(int gradient, int ninputs,
             /* iterate over axes: */
             for(hh = 0; hh < naxis; hh++) {
                 /* compute the coordinate: coordinate of output voxel io.coordinates[hh] + displacement displ[hh] */
+                /* first: apply affine transform */
+                if (affine) {
+                    cc = 0.0;
+                    for (ll = 0; ll < naxis; ll++) {
+                        cc += affine[hh * (naxis + 1) + ll] * (double)(ios[ii].coordinates[ll]);
+                    }
+                    cc += affine[hh * (naxis + 1) + naxis];
+                } else {
+                    cc = ios[ii].coordinates[hh];
+                }
                 /* if the input coordinate is outside the borders, map it: */
-                cc = map_coordinate(ios[ii].coordinates[hh] + ooffsets[hh] + displ[hh], idimensions[hh], modes[ii]);
+                cc = map_coordinate(cc + ooffsets[hh] + displ[hh], idimensions[hh], modes[ii]);
                 if (cc > -1.0) {
                     /* find the filter location along this axis: */
                     if (orders[ii] & 1) {

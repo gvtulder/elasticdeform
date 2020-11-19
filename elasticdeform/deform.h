@@ -13,7 +13,7 @@ typedef struct {
 } NI_SteppingIterator;
 
 int DeformGrid(int, int, PyArrayObject**, PyArrayObject*, PyArrayObject*, PyArrayObject**,
-               int, int*, int*, int*, double*);
+               int, int*, int*, int*, double*, double*);
 
 int NI_SplineFilter1DGrad(PyArrayObject*, int, int, PyArrayObject*);
 

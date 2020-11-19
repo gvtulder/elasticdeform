@@ -3,7 +3,9 @@ import scipy.ndimage
 
 from . import _deform_grid
 
-def deform_random_grid(X, sigma=25, points=3, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+def deform_random_grid(X, sigma=25, points=3, order=3, mode='constant', cval=0.0,
+                       crop=None, prefilter=True, axis=None,
+                       affine=None, rotate=None, zoom=None):
     """
     Elastic deformation with a random deformation grid
 
@@ -21,6 +23,16 @@ def deform_random_grid(X, sigma=25, points=3, order=3, mode='constant', cval=0.0
         standard deviation of the normal distribution
     points : array
         number of points of the deformation grid
+    rotate : float or None
+        angle in degrees to rotate the output
+
+        This only works for 2D images and rotates the image around
+        the center of the output.
+    zoom : float or None
+        scale factor to zoom the output
+
+        This only works for 2D images and scales the image around
+        the center of the output.
 
     See Also
     --------
@@ -34,10 +46,11 @@ def deform_random_grid(X, sigma=25, points=3, order=3, mode='constant', cval=0.0
         points = [points] * len(deform_shape)
 
     displacement = numpy.random.randn(len(deform_shape), *points) * sigma
-    return deform_grid(X, displacement, order, mode, cval, crop, prefilter, axis)
+    return deform_grid(X, displacement, order, mode, cval, crop, prefilter, axis, affine, rotate, zoom)
 
 
-def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
+def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None,
+                affine=None, rotate=None, zoom=None):
     """
     Elastic deformation with a deformation grid
 
@@ -84,6 +97,20 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
         to those axes. The shape of the displacement must match this number of axes.
         If multiple inputs are given, axis should be None or a list of tuples with
         the axes for each input.
+    affine : None, numpy array of shape (ndim, ndim + 1)
+        affine transformation to apply to the output
+
+        The affine transformation is applied to the output during interpolation.
+    rotate : float or None
+        angle in degrees to rotate the output
+
+        This only works for 2D images and rotates the image around
+        the center of the output.
+    zoom : float or None
+        scale factor to zoom the output
+
+        This only works for 2D images and scales the image around
+        the center of the output.
 
     Returns
     -------
@@ -116,6 +143,13 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
     order = _normalize_order(order, Xs)
     mode = _normalize_mode(mode, Xs)
     cval = _normalize_cval(cval, Xs)
+    affine = _normalize_affine(affine, axis)
+
+    # add rotation and zoom to the affine matrix
+    affine = _normalize_rotation_and_zoom(rotate, zoom, affine, [output_shapes[0][d] for d in axis[0]])
+
+    # compute inverse affine given output affine
+    inverse_affine = _compute_inverse_affine(affine)
 
     # prefilter inputs
     Xs_f = []
@@ -137,7 +171,7 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
     # prepare output arrays
     outputs = [numpy.zeros(os, dtype=x.dtype) for os, x in zip(output_shapes, Xs)]
 
-    _deform_grid.deform_grid(Xs_f, displacement_f, output_offset, outputs, axis, order, mode, cval)
+    _deform_grid.deform_grid(Xs_f, displacement_f, output_offset, outputs, axis, order, mode, cval, inverse_affine)
 
     if isinstance(X, list):
         return outputs
@@ -145,7 +179,9 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
         return outputs[0]
 
 
-def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None, X_shape=None):
+def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, crop=None,
+                         prefilter=True, axis=None, X_shape=None,
+                         affine=None, rotate=None, zoom=None):
     """
     Gradient for deform_grid.
 
@@ -179,6 +215,12 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
     axis : None, int, a list of ints, or a list of lists of ints
         the axes to deform over
     X_shape: tuple with the shape of the input, or a list of tuples
+    affine : None, numpy array of shape (ndim, ndim + 1)
+        affine transformation to apply to the output
+    rotate : float or None
+        angle in degrees to rotate the output
+    zoom : float or None
+        scale factor to zoom the output
 
     Returns
     -------
@@ -215,6 +257,13 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
     order = _normalize_order(order, dYs)
     mode = _normalize_mode(mode, dYs)
     cval = _normalize_cval(cval, dYs)
+    affine = _normalize_affine(affine, axis)
+
+    # add rotation and zoom to the affine matrix
+    affine = _normalize_rotation_and_zoom(rotate, zoom, affine, [output_shapes[0][d] for d in axis[0]])
+
+    # compute inverse affine given output affine
+    inverse_affine = _compute_inverse_affine(affine)
 
     # prefilter displacement
     displacement_f = numpy.zeros_like(displacement)
@@ -222,7 +271,7 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
         scipy.ndimage.spline_filter1d(displacement, axis=d, order=3, output=displacement_f)
         displacement = displacement_f
 
-    _deform_grid.deform_grid_grad(dXs, displacement_f, output_offset, dYs, axis, order, mode, cval)
+    _deform_grid.deform_grid_grad(dXs, displacement_f, output_offset, dYs, axis, order, mode, cval, inverse_affine)
 
     # compute gradient of prefilter operation
     dXs_f = []
@@ -329,6 +378,60 @@ def _normalize_cval(cval, Xs):
         cval = [cval] * len(Xs)
     assert len(Xs) == len(cval), 'Number of cval parameters should be equal to number of inputs.'
     return numpy.array(cval).astype('float64')
+
+def _normalize_affine(affine, axis):
+    if affine is None:
+        return affine
+    n_axes = len(axis[0])
+    if affine.shape == (n_axes + 1, n_axes + 1):
+        assert numpy.allclose(affine[n_axes, :], [0, 0, 1]), 'Invalid affine matrix.'
+        affine = affine[:n_axes, :]
+    assert affine.shape == (n_axes, n_axes + 1), 'Affine matrix should have shape (ndim, ndim+1).'
+    return numpy.array(affine).astype('float64')
+
+def _compute_inverse_affine(affine):
+    if affine is None:
+        return None
+    else:
+        inverse_affine = numpy.zeros(affine.shape, dtype='float64')
+        inverse_affine[:, :-1] = numpy.linalg.inv(affine[:, :-1])
+        inverse_affine[:, -1] = -numpy.dot(inverse_affine[:, :-1], affine[:, -1])
+        return inverse_affine
+
+def _compute_rotation_zoom_affine(angle=None, zoom=None, center=None):
+    affine = numpy.eye(3, dtype='float64')
+    if center is not None:
+        affine = numpy.dot(numpy.array([[1, 0, -center[0]],
+                                        [0, 1, -center[1]],
+                                        [0, 0, 1]]), affine)
+    if angle:
+        theta = numpy.radians(angle)
+        affine = numpy.dot(numpy.array([[numpy.cos(theta), -numpy.sin(theta), 0],
+                                        [numpy.sin(theta),  numpy.cos(theta), 0],
+                                        [0, 0, 1]]), affine)
+    if zoom:
+        affine = numpy.dot(numpy.array([[zoom, 0, 0],
+                                        [0, zoom, 0],
+                                        [0, 0, 1]]), affine)
+    if center is not None:
+        affine = numpy.dot(numpy.array([[1, 0, center[0]],
+                                        [0, 1, center[1]],
+                                        [0, 0, 1]]), affine)
+    return affine
+
+def _normalize_rotation_and_zoom(rotate, zoom, affine, output_shape):
+    if rotate is None and zoom is None:
+        return affine
+    assert len(output_shape) == 2, 'Zoom and rotate is only implemented for 2D images.'
+    rotate = float(rotate or 0)
+    zoom = float(zoom or 1)
+    new_affine = _compute_rotation_zoom_affine(angle=rotate, zoom=zoom, center=numpy.array(output_shape) / 2 - 0.5)
+    if affine is not None:
+        base_affine = numpy.eye(3, dtype='float64')
+        base_affine[:-2, :] = affine
+        return numpy.dot(new_affine, base_affine)[:2, :]
+    else:
+        return new_affine[:2, :]
 
 def _extend_mode_to_code(mode):
     """Convert an extension mode to the corresponding integer code.

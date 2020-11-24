@@ -97,17 +97,6 @@ class TestDeformGrid(unittest.TestCase):
         for crop in ((slice(15, 25), slice(None), slice(None)),):
             self.run_comparison(shape, points, crop=crop, order=order)
 
-    def test_rotate(self):
-        points = (2, 2)
-        shape = (5, 5)
-        X = np.random.rand(*shape)
-        displacement = np.random.randn(2, *points) * 3
-        displacement = np.zeros_like(displacement)
-        no_rotate = deform_grid_c(X, displacement, mode='mirror', order=0)
-        for rot in (0, 1, 2, 3, 4):
-            with_rotate = deform_grid_c(X, displacement, mode='mirror', order=0, rotate=rot * 90)
-            np.testing.assert_array_almost_equal(np.rot90(no_rotate, rot), with_rotate)
-
     def test_crop_rotate_zoom(self):
         points = (3, 3)
         shape = (100, 100)
@@ -115,11 +104,12 @@ class TestDeformGrid(unittest.TestCase):
         crop = (slice(10, 90), slice(20, 80))
         for rotate in (-30, 0, 30, None):
             for zoom in (0.5, 1.0, 1.5, None):
-                X = np.random.rand(*shape)
-                displacement = np.random.randn(2, *points) * 3
-                no_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom)
-                with_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom, crop=crop)
-                np.testing.assert_array_almost_equal(no_crop[crop], with_crop)
+                for affine in (None, np.eye(3)):
+                    X = np.random.rand(*shape)
+                    displacement = np.random.randn(2, *points) * 3
+                    no_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom, affine=affine)
+                    with_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom, crop=crop, affine=affine)
+                    np.testing.assert_array_almost_equal(no_crop[crop], with_crop)
 
     def test_multi_2d(self):
         points = (3, 3)

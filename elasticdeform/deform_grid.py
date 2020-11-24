@@ -145,11 +145,11 @@ def deform_grid(X, displacement, order=3, mode='constant', cval=0.0, crop=None, 
     cval = _normalize_cval(cval, Xs)
     affine = _normalize_affine(affine, axis)
 
-    # add rotation and zoom to the affine matrix
-    affine = _normalize_rotation_and_zoom(rotate, zoom, affine, [output_shapes[0][d] for d in axis[0]])
-
     # compute inverse affine given output affine
     inverse_affine = _compute_inverse_affine(affine)
+
+    # add rotation and zoom to the inverse affine matrix
+    inverse_affine = _apply_rotation_and_zoom(rotate, zoom, inverse_affine, [output_shapes[0][d] for d in axis[0]])
 
     # prefilter inputs
     Xs_f = []
@@ -259,11 +259,11 @@ def deform_grid_gradient(dY, displacement, order=3, mode='constant', cval=0.0, c
     cval = _normalize_cval(cval, dYs)
     affine = _normalize_affine(affine, axis)
 
-    # add rotation and zoom to the affine matrix
-    affine = _normalize_rotation_and_zoom(rotate, zoom, affine, [output_shapes[0][d] for d in axis[0]])
-
     # compute inverse affine given output affine
     inverse_affine = _compute_inverse_affine(affine)
+
+    # add rotation and zoom to the affine matrix
+    inverse_affine = _apply_rotation_and_zoom(rotate, zoom, inverse_affine, [output_shapes[0][d] for d in axis[0]])
 
     # prefilter displacement
     displacement_f = numpy.zeros_like(displacement)
@@ -399,39 +399,43 @@ def _compute_inverse_affine(affine):
         return inverse_affine
 
 def _compute_rotation_zoom_affine(angle=None, zoom=None, center=None):
-    affine = numpy.eye(3, dtype='float64')
+    affine = None
     if center is not None:
-        affine = numpy.dot(numpy.array([[1, 0, -center[0]],
-                                        [0, 1, -center[1]],
-                                        [0, 0, 1]]), affine)
+        a = numpy.array([[1, 0, -center[0]],
+                         [0, 1, -center[1]],
+                         [0, 0, 1]])
+        affine = a if affine is None else numpy.dot(a, affine)
     if angle:
         theta = numpy.radians(angle)
-        affine = numpy.dot(numpy.array([[numpy.cos(theta), -numpy.sin(theta), 0],
-                                        [numpy.sin(theta),  numpy.cos(theta), 0],
-                                        [0, 0, 1]]), affine)
+        a = numpy.array([[numpy.cos(theta), -numpy.sin(theta), 0],
+                         [numpy.sin(theta),  numpy.cos(theta), 0],
+                         [0, 0, 1]])
+        affine = a if affine is None else numpy.dot(a, affine)
     if zoom:
-        affine = numpy.dot(numpy.array([[zoom, 0, 0],
-                                        [0, zoom, 0],
-                                        [0, 0, 1]]), affine)
+        a = numpy.array([[zoom, 0, 0],
+                         [0, zoom, 0],
+                         [0, 0, 1]])
+        affine = a if affine is None else numpy.dot(a, affine)
     if center is not None:
-        affine = numpy.dot(numpy.array([[1, 0, center[0]],
-                                        [0, 1, center[1]],
-                                        [0, 0, 1]]), affine)
+        a = numpy.array([[1, 0, center[0]],
+                         [0, 1, center[1]],
+                         [0, 0, 1]])
+        affine = a if affine is None else numpy.dot(a, affine)
     return affine
 
-def _normalize_rotation_and_zoom(rotate, zoom, affine, output_shape):
+def _apply_rotation_and_zoom(rotate, zoom, inverse_affine, output_shape):
     if rotate is None and zoom is None:
-        return affine
+        return inverse_affine
     assert len(output_shape) == 2, 'Zoom and rotate is only implemented for 2D images.'
-    rotate = float(rotate or 0)
-    zoom = float(zoom or 1)
-    new_affine = _compute_rotation_zoom_affine(angle=rotate, zoom=zoom, center=numpy.array(output_shape) / 2 - 0.5)
-    if affine is not None:
-        base_affine = numpy.eye(3, dtype='float64')
-        base_affine[:-2, :] = affine
-        return numpy.dot(new_affine, base_affine)[:2, :]
+    rotate = -float(rotate or 0)
+    zoom = 1 / float(zoom or 1)
+    new_inverse_affine = _compute_rotation_zoom_affine(angle=rotate, zoom=zoom, center=numpy.array(output_shape) / 2 - 0.5)
+    if inverse_affine is not None:
+        base_inverse_affine = numpy.eye(3, dtype='float64')
+        base_inverse_affine[:-1, :] = inverse_affine
+        return numpy.dot(new_inverse_affine, base_inverse_affine)[:2, :]
     else:
-        return new_affine[:2, :]
+        return new_inverse_affine[:2, :]
 
 def _extend_mode_to_code(mode):
     """Convert an extension mode to the corresponding integer code.

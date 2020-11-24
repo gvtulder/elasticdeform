@@ -349,8 +349,8 @@ class TestDeformGrid(unittest.TestCase):
                     self.run_comparison_tensorflow(shape, points, order=order, mode=mode, crop=crop)
 
     def run_comparison_tensorflow(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
-        if tf is None:
-            raise unittest.SkipTest("TensorFlow was not loaded.")
+        if tf is None or not hasattr(tf, 'py_func'):
+            raise unittest.SkipTest("TensorFlow 1 was not loaded.")
 
         # generate random displacement vector
         displacement = np.random.randn(len(shape) if axis is None else len(axis), *points) * sigma

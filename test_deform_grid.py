@@ -359,7 +359,7 @@ class TestDeformGrid(unittest.TestCase):
                         self.run_comparison_tensorflow_multi(shape, points, order=order, mode=mode, crop=crop)
 
     def run_comparison_tensorflow(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
-        if tf is None or not (hasattr(tf, 'py_func') or hasattr(tf, 'numpy_function')):
+        if tf is None or not (hasattr(tf, 'py_func') or hasattr(tf, 'py_function')):
             raise unittest.SkipTest("TensorFlow was not loaded.")
 
         # generate random displacement vector
@@ -381,9 +381,9 @@ class TestDeformGrid(unittest.TestCase):
             # TensorFlow 1
             # build tensorflow graph
             X = tf.Variable(X_val)
-            dY = tf.Variable(dY_val)
+            dX_deformed = tf.Variable(dX_deformed_val)
             X_deformed = etf.deform_grid(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
-            [dX] = tf.gradients(X_deformed, X, dY)
+            [dX] = tf.gradients(X_deformed, X, dX_deformed)
 
             with tf.Session() as sess:
                 sess.run(tf.global_variables_initializer())
@@ -401,7 +401,7 @@ class TestDeformGrid(unittest.TestCase):
         np.testing.assert_almost_equal(dX_ref, dX)
 
     def run_comparison_tensorflow_multi(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
-        if tf is None or not hasattr(tf, 'numpy_function'):
+        if tf is None or not hasattr(tf, 'py_function'):
             raise unittest.SkipTest("TensorFlow 2 was not loaded.")
 
         # generate random displacement vector

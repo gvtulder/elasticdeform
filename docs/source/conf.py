@@ -44,7 +44,7 @@ extensions = [
     'sphinx.ext.napoleon',
 ]
 
-autodoc_mock_imports = ['tensorflow', 'elasticdeform._deform_grid']
+autodoc_mock_imports = ['tensorflow', 'torch',  'elasticdeform._deform_grid']
 
 napoleon_google_docstring = False
 napoleon_use_param = False

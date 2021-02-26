@@ -13,6 +13,7 @@ Welcome to elasticdeform's documentation!
    README
    elasticdeform
    elasticdeform.tf
+   elasticdeform.torch
    license
 
 .. image:: deformed.png

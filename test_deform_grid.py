@@ -11,9 +11,17 @@ except Exception as e:
     print(e)
     tf = None
 
+try:
+    import torch
+except Exception as e:
+    print(e)
+    torch = None
+
 import elasticdeform
 if tf is not None:
     import elasticdeform.tf as etf
+if torch is not None:
+    import elasticdeform.torch as etorch
 
 # Python implementation
 def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
@@ -434,6 +442,103 @@ class TestDeformGrid(unittest.TestCase):
             X_deformed, Y_deformed = etf.deform_grid([X, Y], displacement, order=order, crop=crop, mode=mode, axis=axis)
         dX = g.gradient(X_deformed, X, dX_deformed)
         dY = g.gradient(Y_deformed, Y, dY_deformed)
+
+        np.testing.assert_almost_equal(X_deformed_ref, X_deformed)
+        np.testing.assert_almost_equal(Y_deformed_ref, Y_deformed)
+        np.testing.assert_almost_equal(dX_ref, dX)
+        np.testing.assert_almost_equal(dY_ref, dY)
+
+    def test_basic_2d_torch(self):
+        points = (3, 3)
+        shape = (100, 100)
+        for order in (0, 1, 2):
+            for crop in (None, (slice(20, 80), slice(30, 70))):
+                for mode in ('nearest', 'wrap', 'reflect', 'mirror', 'constant'):
+                    self.run_comparison_torch(shape, points, order=order, mode=mode, crop=crop)
+
+    def run_comparison_torch(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
+        if torch is None:
+            raise unittest.SkipTest("PyTorch was not loaded.")
+
+        # generate random displacement vector
+        displacement = np.random.randn(len(shape) if axis is None else len(axis), *points) * sigma
+        # generate random data
+        X_val = np.random.rand(*shape)
+
+        # compute forward reference value
+        X_deformed_ref = elasticdeform.deform_grid(X_val, displacement, order=order, crop=crop, mode=mode, axis=axis)
+
+        # generate gradient
+        dX_deformed_val = np.random.rand(*X_deformed_ref.shape)
+
+        # compute backward reference value
+        dX_ref = elasticdeform.deform_grid_gradient(dX_deformed_val, displacement, order=order, crop=crop, mode=mode, axis=axis, X_shape=shape)
+
+        # compute PyTorch output
+        X = torch.tensor(X_val, requires_grad=True)
+        displacement = torch.tensor(displacement)
+        dX_deformed = torch.tensor(dX_deformed_val)
+        X_deformed = etorch.deform_grid(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
+        X_deformed.backward(dX_deformed)
+        dX = X.grad
+
+        # convert back to numpy
+        X_deformed = X_deformed.detach().numpy()
+        dX = dX.detach().numpy()
+
+        np.testing.assert_almost_equal(X_deformed_ref, X_deformed)
+        np.testing.assert_almost_equal(dX_ref, dX)
+
+    def test_multi_2d_torch(self):
+        points = (3, 3)
+        shape = (100, 75)
+        sigma = 25
+        for order in (0, 1, 2, 3, 4, [0, 3]):
+            for crop in (None, (slice(15, 25), slice(15, 50))):
+                for cval in (0.0, 1.0, [0.0, 1.0]):
+                    for mode in ('constant', ['constant', 'reflect']):
+                        self.run_comparison_torch_multi(shape, points, order=order, mode=mode, crop=crop)
+
+    def run_comparison_torch_multi(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
+        if torch is None:
+            raise unittest.SkipTest("PyTorch was not loaded.")
+
+        # generate random displacement vector
+        displacement = np.random.randn(len(shape) if axis is None else len(axis), *points) * sigma
+        # generate random data
+        X_val = np.random.rand(*shape)
+        # generate more random data
+        Y_val = np.random.rand(*shape)
+
+        # compute forward reference value
+        X_deformed_ref, Y_deformed_ref = elasticdeform.deform_grid([X_val, Y_val],
+                displacement, order=order, crop=crop, mode=mode, axis=axis)
+
+        # generate gradient
+        dX_deformed_val = np.random.rand(*X_deformed_ref.shape)
+        dY_deformed_val = np.random.rand(*Y_deformed_ref.shape)
+
+        # compute backward reference value
+        dX_ref, dY_ref = elasticdeform.deform_grid_gradient([dX_deformed_val, dY_deformed_val],
+                displacement, order=order, crop=crop, mode=mode, axis=axis, X_shape=[shape, shape])
+
+        # compute PyTorch output
+        X = torch.tensor(X_val, requires_grad=True)
+        Y = torch.tensor(Y_val, requires_grad=True)
+        displacement = torch.tensor(displacement)
+        dX_deformed = torch.tensor(dX_deformed_val)
+        dY_deformed = torch.tensor(dY_deformed_val)
+        X_deformed, Y_deformed = etorch.deform_grid([X, Y], displacement, order=order, crop=crop, mode=mode, axis=axis)
+        X_deformed.backward(dX_deformed, retain_graph=True)
+        Y_deformed.backward(dY_deformed)
+        dX = X.grad
+        dY = Y.grad
+
+        # convert back to numpy
+        X_deformed = X_deformed.detach().numpy()
+        Y_deformed = Y_deformed.detach().numpy()
+        dX = dX.detach().numpy()
+        dY = dY.detach().numpy()
 
         np.testing.assert_almost_equal(X_deformed_ref, X_deformed)
         np.testing.assert_almost_equal(Y_deformed_ref, Y_deformed)

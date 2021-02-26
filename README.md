@@ -1,5 +1,5 @@
-Elastic deformations for N-dimensional images (Python, SciPy, NumPy, TensorFlow)
-================================================================================
+Elastic deformations for N-dimensional images (Python, SciPy, NumPy, TensorFlow, PyTorch)
+=========================================================================================
 
 [![Documentation Status](https://readthedocs.org/projects/elasticdeform/badge/?version=latest)](https://elasticdeform.readthedocs.io/en/latest/?badge=latest)
 [![Build Status](https://travis-ci.com/gvtulder/elasticdeform.svg?branch=master)](https://travis-ci.com/gvtulder/elasticdeform)
@@ -22,7 +22,8 @@ displacement vectors and a spline interpolation.
 In addition to the normal, forward deformation, this package also provides a
 function that can backpropagate the gradient through the deformation. This makes
 it possible to use the deformation as a layer in a convolutional neural network.
-For convenience, a TensorFlow wrapper is provided in `elasticdeform.tf`.
+For convenience, TensorFlow and PyTorch wrappers are provided in `elasticdeform.tf`
+and `elasticdeform.torch`.
 
 
 Installation
@@ -186,6 +187,34 @@ X_deformed = etf.deform_grid(X, displacement, order=3)
 
 # the gradient w.r.t. X can be computed in the normal TensorFlow manner
 [dX] = tf.gradients(X_deformed, X, dY)
+```
+
+
+### PyTorch wrapper
+
+The `elasticdeform.torch` module provides a wrapper for `deform_grid` in PyTorch.
+The function uses PyTorch Tensors as input and output, but otherwise uses
+the same parameters.
+```python
+import numpy
+import elasticdeform.torch as etorch
+
+displacement_val = numpy.random.randn(2, 3, 3) * 5
+X_val = numpy.random.rand(200, 300)
+dY_val = numpy.random.rand(200, 300)
+
+# construct PyTorch input and top gradient
+displacement = torch.tensor(displacement_val)
+X = torch.tensor(X_val, requires_grad=True)
+dY = torch.tensor(dY_val)
+
+# the deform_grid function is similar to the plain Python equivalent,
+# but it accepts and returns PyTorch Tensors
+X_deformed = etorch.deform_grid(X, displacement, order=3)
+
+# the gradient w.r.t. X can be computed in the normal PyTorch manner
+X_deformed.backward(dY)
+print(X.grad)
 ```
 
 

@@ -206,5 +206,7 @@ from [SciPy's ndimage library](https://github.com/scipy/scipy/blob/28636fbc3f16d
 
 This code is made available under the BSD license. See ``LICENSE.txt`` for details.
 
+If you want to cite this library, please use [DOI:10.5281/zenodo.4563172](https://doi.org/10.5281/zenodo.4563172).
+
 * <https://github.com/gvtulder/elasticdeform>
 * <https://elasticdeform.readthedocs.io/>

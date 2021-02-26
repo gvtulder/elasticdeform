@@ -4,7 +4,7 @@ Elastic deformations for N-dimensional images (Python, SciPy, NumPy, TensorFlow,
 [![Documentation Status](https://readthedocs.org/projects/elasticdeform/badge/?version=latest)](https://elasticdeform.readthedocs.io/en/latest/?badge=latest)
 [![Build Status](https://travis-ci.com/gvtulder/elasticdeform.svg?branch=master)](https://travis-ci.com/gvtulder/elasticdeform)
 [![Build status](https://ci.appveyor.com/api/projects/status/air4dambkpcummeh/branch/master?svg=true)](https://ci.appveyor.com/project/gvtulder/elasticdeform/branch/master)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4563172.svg)](https://doi.org/10.5281/zenodo.4563172)
+[![DOI](https://zenodo.org/badge/145003699.svg)](https://zenodo.org/badge/latestdoi/145003699)
 
 This library implements elastic grid-based deformations for N-dimensional images.
 
@@ -235,7 +235,7 @@ from [SciPy's ndimage library](https://github.com/scipy/scipy/blob/28636fbc3f16d
 
 This code is made available under the BSD license. See ``LICENSE.txt`` for details.
 
-If you want to cite this library, please use [DOI:10.5281/zenodo.4563172](https://doi.org/10.5281/zenodo.4563172).
+If you want to cite this library, please see [![DOI](https://zenodo.org/badge/145003699.svg)](https://zenodo.org/badge/latestdoi/145003699).
 
 * <https://github.com/gvtulder/elasticdeform>
 * <https://elasticdeform.readthedocs.io/>

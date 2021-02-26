@@ -2,7 +2,7 @@ Elastic deformations for N-dimensional images (Python, SciPy, NumPy, TensorFlow)
 ================================================================================
 
 [![Documentation Status](https://readthedocs.org/projects/elasticdeform/badge/?version=latest)](https://elasticdeform.readthedocs.io/en/latest/?badge=latest)
-[![Build Status](https://travis-ci.org/gvtulder/elasticdeform.svg?branch=master)](https://travis-ci.org/gvtulder/elasticdeform)
+[![Build Status](https://travis-ci.com/gvtulder/elasticdeform.svg?branch=master)](https://travis-ci.com/gvtulder/elasticdeform)
 [![Build status](https://ci.appveyor.com/api/projects/status/air4dambkpcummeh/branch/master?svg=true)](https://ci.appveyor.com/project/gvtulder/elasticdeform/branch/master)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4563172.svg)](https://doi.org/10.5281/zenodo.4563172)
 

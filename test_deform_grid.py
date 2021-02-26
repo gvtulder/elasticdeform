@@ -396,6 +396,9 @@ class TestDeformGrid(unittest.TestCase):
             with tf.Session() as sess:
                 sess.run(tf.global_variables_initializer())
                 X_deformed_val, dX_val = sess.run([X_deformed, dX])
+
+            X_deformed = X_deformed_val
+            dX = dX_val
         else:
             # TensorFlow 2
             X = tf.Variable(X_val)
@@ -409,7 +412,7 @@ class TestDeformGrid(unittest.TestCase):
         np.testing.assert_almost_equal(dX_ref, dX)
 
     def run_comparison_tensorflow_multi(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
-        if tf is None or not hasattr(tf, 'py_function'):
+        if tf is None or not hasattr(tf, 'py_function') or hasattr(tf, 'py_func'):
             raise unittest.SkipTest("TensorFlow 2 was not loaded.")
 
         # generate random displacement vector

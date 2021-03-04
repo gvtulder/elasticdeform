@@ -1,0 +1,36 @@
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  run_tests:
+    name: Run unit tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [2.7, 3.5, 3.6, 3.7, 3.8]
+        tensorflow: [tensorflow]
+
+        # run one test with an older tensorflow version
+        include:
+          - python-version: 3.6
+            tensorflow: tensorflow==1.15
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies with ${{ matrix.tensorflow }} and torch
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+          pip install ${{ matrix.tensorflow }}
+          pip install torch
+
+      - name: Build and install elasticdeform
+        run: pip install -e .
+
+      - name: Run tests
+        run: python test_deform_grid.py -v

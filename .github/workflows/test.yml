@@ -6,31 +6,45 @@ jobs:
   run_tests:
     name: Run unit tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [2.7, 3.5, 3.6, 3.7, 3.8]
-        tensorflow: [tensorflow]
 
-        # run one test with an older tensorflow version
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['2.7', '3.5', '3.6', '3.7', '3.8', '3.9']
+        tensorflow: ['tensorflow']
+        # the implementation for scipy.ndimage changed in SciPy 1.6.0,
+        # causing some of the tests to fail
+        scipy: ['scipy<=1.5.4']
+
         include:
-          - python-version: 3.6
-            tensorflow: tensorflow==1.15
+          # run one test with an older tensorflow version
+          - python-version: '3.6'
+            tensorflow: 'tensorflow==1.15'
+            scipy: 'scipy<=1.5.4'
+
+          # old scipy is not supported in Python 3.10
+          - python-version: '3.10'
+            scipy: 'scipy'
+            tensorflow: tensorflow
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
       - name: Install dependencies with ${{ matrix.tensorflow }} and torch
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
-          pip install ${{ matrix.tensorflow }}
+          pip install "${{ matrix.scipy }}"
+          pip install "${{ matrix.tensorflow }}"
           pip install torch
 
       - name: Build and install elasticdeform
         run: pip install -e .
 
       - name: Run tests
-        run: python test_deform_grid.py -v
+        run: python tests/test_deform_grid.py -v

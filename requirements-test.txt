@@ -1,4 +1,0 @@
-numpy
-# the implementation for scipy.ndimage changed in SciPy 1.6.0,
-# causing some of the tests to fail
-scipy<=1.5.4

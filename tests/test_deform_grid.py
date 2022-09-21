@@ -1,8 +1,10 @@
 import os
 import numpy as np
+import scipy
 import scipy.ndimage
 import unittest
 import itertools
+from packaging import version
 
 try:
     import tensorflow as tf
@@ -22,6 +24,13 @@ if tf is not None:
     import elasticdeform.tf as etf
 if torch is not None:
     import elasticdeform.torch as etorch
+
+
+# the implementation of some border modes (reflect and nearest) changed in SciPy 1.6.0,
+# causing some of the tests to fail
+def modern_scipy_version():
+    return version.parse(scipy.__version__) > version.parse('1.5.4')
+
 
 # Python implementation
 def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=None, prefilter=True, axis=None):
@@ -81,6 +90,9 @@ class TestDeformGrid(unittest.TestCase):
             for shape in ((100, 100), (100, 75)):
                 for order in (0, 1, 2, 3, 4):
                     for mode in ('nearest', 'wrap', 'reflect', 'mirror', 'constant'):
+                        if modern_scipy_version() and mode in ('reflect', 'nearest'):
+                            # skip
+                            continue
                         self.run_comparison(shape, points, order=order, mode=mode)
 
     def test_basic_3d(self):
@@ -117,7 +129,7 @@ class TestDeformGrid(unittest.TestCase):
                     displacement = np.random.randn(2, *points) * 3
                     no_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom, affine=affine)
                     with_crop = deform_grid_c(X, displacement, rotate=rotate, zoom=zoom, crop=crop, affine=affine)
-                    np.testing.assert_array_almost_equal(no_crop[crop], with_crop)
+                    np.testing.assert_allclose(no_crop[crop], with_crop, rtol=1e-05, atol=1e-08)
 
     def test_multi_2d(self):
         points = (3, 3)
@@ -127,6 +139,9 @@ class TestDeformGrid(unittest.TestCase):
             for crop in (None, (slice(15, 25), slice(15, 50))):
                 for cval in (0.0, 1.0, [0.0, 1.0]):
                     for mode in ('constant', ['constant', 'reflect']):
+                        if modern_scipy_version() and mode == ['constant', 'reflect']:
+                            # skip
+                            continue
                         # generate random displacement vector
                         displacement = np.random.randn(len(shape), *points) * sigma
                         # generate random data
@@ -142,8 +157,8 @@ class TestDeformGrid(unittest.TestCase):
                         res_Y_ref = deform_grid_py(Y, displacement, order=order_list[1], crop=crop, cval=cval_list[1], mode=mode_list[1])
                         [res_X_test, res_Y_test] = deform_grid_c([X, Y], displacement, order=order, crop=crop, cval=cval, mode=mode)
 
-                        np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
-                        np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+                        np.testing.assert_allclose(res_X_ref, res_X_test, rtol=1e-05, atol=1e-06)
+                        np.testing.assert_allclose(res_Y_ref, res_Y_test, rtol=1e-05, atol=1e-06)
 
     def test_multi_3d(self):
         points = (3, 3, 3)
@@ -163,8 +178,8 @@ class TestDeformGrid(unittest.TestCase):
                 res_Y_ref = deform_grid_py(Y, displacement, order=order, crop=crop)
                 [res_X_test, res_Y_test] = deform_grid_c([X, Y], displacement, order=order, crop=crop)
 
-                np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
-                np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+                np.testing.assert_allclose(res_X_ref, res_X_test, rtol=1e-05, atol=1e-08)
+                np.testing.assert_allclose(res_Y_ref, res_Y_test, rtol=1e-05, atol=1e-08)
 
     def test_different_strides(self):
         # test for multiple inputs with unequal strides
@@ -196,8 +211,8 @@ class TestDeformGrid(unittest.TestCase):
         res_X_ref = deform_grid_py(X, displacement, axis=(1, 2))
         res_Y_ref = deform_grid_py(Y, displacement, axis=(1, 2))
         res_X_test, res_Y_test = deform_grid_c([X, Y], displacement, axis=(1, 2))
-        np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
-        np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+        np.testing.assert_allclose(res_X_ref, res_X_test, rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res_Y_ref, res_Y_test, rtol=1e-05, atol=1e-08)
 
         # test multiple inputs, different axes
         X = np.random.rand(3, 20, 30)
@@ -206,8 +221,8 @@ class TestDeformGrid(unittest.TestCase):
         res_X_ref = deform_grid_py(X, displacement, axis=(1, 2))
         res_Y_ref = deform_grid_py(Y, displacement, axis=(0, 1))
         res_X_test, res_Y_test = deform_grid_c([X, Y], displacement, axis=[(1, 2), (0, 1)])
-        np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
-        np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+        np.testing.assert_allclose(res_X_ref, res_X_test, rtol=1e-05, atol=1e-08)
+        np.testing.assert_allclose(res_Y_ref, res_Y_test, rtol=1e-05, atol=1e-08)
 
         # test multiple inputs, with cropping
         X = np.random.rand(3, 90, 80, 7)
@@ -217,8 +232,8 @@ class TestDeformGrid(unittest.TestCase):
             res_X_ref = deform_grid_py(X, displacement, axis=(1, 2), crop=crop)
             res_Y_ref = deform_grid_py(Y, displacement, axis=(1, 2), crop=crop)
             res_X_test, res_Y_test = deform_grid_c([X, Y], displacement, axis=(1, 2), crop=crop)
-            np.testing.assert_array_almost_equal(res_X_ref, res_X_test)
-            np.testing.assert_array_almost_equal(res_Y_ref, res_Y_test)
+            np.testing.assert_allclose(res_X_ref, res_X_test, rtol=1e-05, atol=1e-08)
+            np.testing.assert_allclose(res_Y_ref, res_Y_test, rtol=1e-05, atol=1e-08)
 
     def test_grad_2d(self):
         points = (3, 5)
@@ -303,8 +318,8 @@ class TestDeformGrid(unittest.TestCase):
                         res_dY_ref = deform_grid_gradient_c(dYdeformed, displacement, order=order_list[1], crop=crop, cval=cval_list[1], mode=mode_list[1], X_shape=Y.shape)
                         [res_dX_test, res_dY_test] = deform_grid_gradient_c([dXdeformed, dYdeformed], displacement, order=order, crop=crop, cval=cval, mode=mode, X_shape=[X.shape, Y.shape])
 
-                        np.testing.assert_array_almost_equal(res_dX_ref, res_dX_test)
-                        np.testing.assert_array_almost_equal(res_dY_ref, res_dY_test)
+                        np.testing.assert_allclose(res_dX_ref, res_dX_test, rtol=1e-05, atol=1e-08)
+                        np.testing.assert_allclose(res_dY_ref, res_dY_test, rtol=1e-05, atol=1e-08)
 
     def verify_grad(self, X, fn, grad_fn, eps=1e-4, n_tests=10):
         # test the gradient computed by grad_fn by comparing it with the numeric gradient of fn
@@ -334,7 +349,7 @@ class TestDeformGrid(unittest.TestCase):
 
             # now compute the gradient directly using grad_fn
             gx_test = grad_fn(random_projection, X)
-            np.testing.assert_array_almost_equal(gx_ref, gx_test)
+            np.testing.assert_allclose(gx_ref, gx_test, rtol=1e-05, atol=1e-08)
 
     def run_comparison(self, shape, points, order=3, sigma=25, crop=None, mode='constant', axis=None):
         # generate random displacement vector
@@ -346,7 +361,7 @@ class TestDeformGrid(unittest.TestCase):
         res_ref = deform_grid_py(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
         res_test = deform_grid_c(X, displacement, order=order, crop=crop, mode=mode, axis=axis)
 
-        np.testing.assert_array_almost_equal(res_ref, res_test)
+        np.testing.assert_allclose(res_ref, res_test, rtol=1e-05, atol=1e-08)
 
     def test_basic_2d_tensorflow(self):
         points = (3, 3)

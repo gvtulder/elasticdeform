@@ -4,66 +4,50 @@ on: [push, pull_request]
 
 jobs:
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Build wheel for ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }} ${{ matrix.buildplat[2] }}
+    runs-on: ${{ matrix.buildplat[0] }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019, macOS-10.15]
-
-    env:
-      CIBW_BUILD: cp*
+        # similar to scipy wheels, see github action
+        # https://github.com/scipy/scipy/blob/ece78377d322f891b1ca2d248ac82caa3411837e/.github/workflows/wheels.yml
+        buildplat:
+          - [ubuntu-20.04, manylinux, x86_64]
+#         - [ubuntu-20.04, manylinux, aarch64]
+          - [macos-11, macosx, x86_64]
+          - [macos-12, macosx, arm64]
+          - [windows-2019, win, AMD64]
+        python:
+          - ["cp38", "3.8"]
+          - ["cp39", "3.9"]
+          - ["cp310", "3.10"]
+          - ["cp311", "3.11.0-alpha - 3.11.0"]
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # Used to host cibuildwheel
-      - uses: actions/setup-python@v2
-
-      - name: Install Visual C++ for Python 2.7
-        if: runner.os == 'Windows'
-        run: choco install vcpython27 -f -y
+      - uses: actions/setup-python@v3
 
       - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel==1.10.0
+        run: python -m pip install cibuildwheel==2.10.1
 
       # https://github.com/scipy/oldest-supported-numpy/blob/master/setup.cfg
 
-      - name: Build wheels for CPython 3.5
+      - name: Build wheels
         run: |
           python -m cibuildwheel --output-dir wheelhouse
         env:
-          CIBW_BUILD: "cp35-*"
-          CIBW_BEFORE_BUILD: pip install setuptools numpy==1.13.3
+          CIBW_BEFORE_BUILD: pip install oldest-supported-numpy
+          CIBW_BUILD: ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}*
+          CIBW_ARCHS: ${{ matrix.buildplat[2] }}
+          CIBW_TEST_REQUIRES: packaging
+          # no scipy wheels available for 3.11,
+          # skip warning for Apple Silicon tests
+          CIBW_TEST_SKIP: "cp311-* *aarch64 *-macosx_arm64"
+          CIBW_TEST_COMMAND: python {package}/tests/test_deform_grid.py -v
 
-      - name: Build wheels for CPython 3.6
-        run: |
-          python -m cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BUILD: "cp36-*"
-          CIBW_BEFORE_BUILD: pip install setuptools numpy==1.13.3
-
-      - name: Build wheels for CPython 3.7
-        run: |
-          python -m cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BUILD: "cp37-*"
-          CIBW_BEFORE_BUILD: pip install setuptools numpy==1.14.5
-
-      - name: Build wheels for CPython 3.8
-        run: |
-          python -m cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BUILD: "cp38-*"
-          CIBW_BEFORE_BUILD: pip install setuptools numpy==1.17.3
-
-      - name: Build wheels for CPython 3.9
-        run: |
-          python -m cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BUILD: "cp39-*"
-          CIBW_BEFORE_BUILD: pip install setuptools numpy==1.19.3
-
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: ./wheelhouse/*.whl
 
@@ -71,9 +55,9 @@ jobs:
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v3
         name: Install Python
         with:
           python-version: '3.8'
@@ -81,6 +65,6 @@ jobs:
       - name: Build sdist
         run: python setup.py sdist
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: dist/*.tar.gz

@@ -1,6 +1,10 @@
 #ifndef FROM_SCIPY_H
 #define FROM_SCIPY_H
 
+#if NPY_API_VERSION >= 0x0000000c
+    #define HAVE_WRITEBACKIFCOPY
+#endif
+
 /* the iterator structure: */
 typedef struct {
     int rank_m1;

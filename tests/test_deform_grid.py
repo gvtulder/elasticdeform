@@ -56,6 +56,7 @@ def deform_grid_py(X, displacement, order=3, mode='constant', cval=0.0, crop=Non
         crop = (slice(None),) * X.ndim
 
     # add the displacement to the coordinates
+    coordinates = list(coordinates)
     for i in range(len(axis)):
         yd = scipy.ndimage.map_coordinates(displacement[i], xi, order=3)
         # adding the displacement
